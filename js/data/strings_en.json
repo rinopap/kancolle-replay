@@ -492,6 +492,8 @@
 	"TCF": "TCF",
 	"from_kc3_file": "From .kc3 file",
 	"from_preset": "From preset",
+	"preset_map_toggle": "Select from map",
+	"preset_map_no_data": "no data",
 	"clear_all": "Clear All",
 	"export_deckbuilder": "Export DeckBuilder",
 	"stat_level": "Level",
@@ -1014,6 +1016,7 @@
 	"equip_name_0": "",
 	"selector": {
 		"recent_section": "Recently Used",
+		"recent_clear": "clear",
 		"ship_section_Shipgirls": "Shipgirls",
 		"ship_section_Abyssals": "Abyssals",
 		"ship_section_Extra": "Extra",

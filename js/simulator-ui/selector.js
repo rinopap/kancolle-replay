@@ -32,6 +32,13 @@ function pushRecentId(storageKey,id) {
 		//storage unavailable/full; recent history just won't persist
 	}
 }
+function clearRecentIds(storageKey) {
+	try {
+		delete localStorage[storageKey];
+	} catch (e) {
+		//storage unavailable; nothing to clear
+	}
+}
 
 var METHODS_COMMON = {
 	callbackSubmit: null,
@@ -202,6 +209,10 @@ var UI_SHIPSELECTOR = Vue.createApp({
 			pushRecentId(RECENT_KEY_SHIP,mstId);
 			METHODS_COMMON.methods.doSubmit.call(this,mstId);
 		},
+		onclickClearRecent: function() {
+			clearRecentIds(RECENT_KEY_SHIP);
+			this.recentShips = [];
+		},
 		
 		addResult: METHODS_COMMON.methods.addResult,
 		oninputSearch: function() { METHODS_COMMON.methods.oninputSearch.call(this,SHIP_LIST_ORDER[this.$i18n.locale]); },
@@ -280,6 +291,10 @@ var UI_EQUIPSELECTOR = Vue.createApp({
 		doSubmit: function(mstId) {
 			pushRecentId(RECENT_KEY_EQUIP,mstId);
 			METHODS_COMMON.methods.doSubmit.call(this,mstId);
+		},
+		onclickClearRecent: function() {
+			clearRecentIds(RECENT_KEY_EQUIP);
+			this.recentEquip = [];
 		},
 		
 		addResult: METHODS_COMMON.methods.addResult,

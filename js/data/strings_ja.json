@@ -492,6 +492,8 @@
 	"TCF": "輸送",
 	"from_kc3_file": ".kc3 ファイルから",
 	"from_preset": "プリセットから",
+	"preset_map_toggle": "マップから選択",
+	"preset_map_no_data": "データなし",
 	"clear_all": "艦隊リセット",
 	"export_deckbuilder": "デッキビルダー出力",
 	"stat_level": "レベル",
@@ -1014,6 +1016,7 @@
 	"equip_name_0": "",
 	"selector": {
 		"recent_section": "最近使ったもの",
+		"recent_clear": "クリア",
 		"ship_section_Shipgirls": "艦娘",
 		"ship_section_Abyssals": "深海棲艦",
 		"ship_section_Extra": "EXTRA",

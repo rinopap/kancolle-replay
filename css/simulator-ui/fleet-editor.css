@@ -351,3 +351,43 @@ div.iconOverlay .debuff {
 #divPlaneBonusNotes {
 	margin-bottom: 20px;
 }
+.presetMapWrap {
+	margin-top: 6px;
+}
+.presetMap {
+	position: relative;
+	width: 480px;
+	max-width: 100%;
+	aspect-ratio: 300 / 180;
+	background-size: cover;
+	background-position: center;
+	border: 1px solid #999;
+}
+.presetMapNode {
+	position: absolute;
+	transform: translate(-50%,-50%);
+	width: 22px;
+	height: 22px;
+	line-height: 22px;
+	text-align: center;
+	font-size: 12px;
+	font-weight: bold;
+	border-radius: 50%;
+	background-color: rgba(255,255,255,0.85);
+	border: 2px solid #3366cc;
+	color: #333;
+	cursor: pointer;
+}
+.presetMapNode:hover {
+	background-color: #fff;
+}
+.presetMapNodeActive {
+	background-color: #ffcc00;
+	border-color: #cc6600;
+}
+.presetMapNodeDisabled {
+	border-color: #999;
+	color: #999;
+	cursor: default;
+	opacity: 0.5;
+}

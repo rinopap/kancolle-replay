@@ -660,3 +660,8 @@ div.scrollAnchor > div {
 	flex-shrink: 0;
 	white-space: nowrap;
 }
+
+.buttonWrapRecent {
+	max-height: 90px;
+	overflow-y: auto;
+}

@@ -13,6 +13,7 @@
 	<script src="js/kcMAPDATA.js"></script>
 	<script src="js/kcEDGES.js"></script>
 	<script src="js/kcENEMYCOMP.js"></script>
+	<script src="js/kcMAPNODES.js"></script>
 	<script src="js/shared.js"></script>
 	<script src="js/kcships.js"></script>
 	<script src="js/kcsim.js"></script>
@@ -1038,6 +1039,16 @@
 					</select>
 					<select v-model="loadPresetNode" v-show="loadPresetArea" @change="onchangePresetNode"><option v-for="o in presetListNode" :value="o.value">{{o.name}}</option></select>
 					<select v-model="loadPresetComp" v-show="loadPresetArea" @change="onchangePreset"><option v-for="o in presetListComp" :value="o.value">{{o.name}}</option></select>
+					<a href="#" v-show="presetMapData" @click.prevent="showPresetMap = !showPresetMap">{{$t('preset_map_toggle')}}</a>
+				</div>
+				<div class="presetMapWrap" v-show="showPresetMap && presetMapData">
+					<div class="presetMap" :style="{backgroundImage: presetMapData ? 'url(' + presetMapData.img + ')' : ''}">
+						<div v-for="marker in (presetMapData ? presetMapData.markers : [])"
+							class="presetMapNode" :class="{presetMapNodeActive: marker.letter == loadPresetNode, presetMapNodeDisabled: !marker.hasData}"
+							:style="{left: marker.xPct + '%', top: marker.yPct + '%'}"
+							:title="marker.hasData ? marker.letter : marker.letter + ' (' + $t('preset_map_no_data') + ')'"
+							@click="onclickPresetMapNode(marker)">{{marker.letter}}</div>
+					</div>
 				</div>
 			</div>
 			<div class="importOther">
@@ -1273,8 +1284,8 @@
 				</div>
 			</div>
 			<div id="divShipSelButtonsRecent" v-show="!searchName.length && !buttonsChoice && recentShips.length">
-				<div>{{$t('selector.recent_section')}}</div>
-				<div class="buttonWrap">
+				<div>{{$t('selector.recent_section')}} <a href="#" @click.prevent="onclickClearRecent">({{$t('selector.recent_clear')}})</a></div>
+				<div class="buttonWrap buttonWrapRecent">
 					<div v-for="btn in recentShips" class="selButton" @click="onclickButtonShip(btn)">
 						<div><img :src="'assets/icons/' + btn.imgName" /></div>
 						<div>{{$t(btn.nameKey)}}</div>
@@ -1334,8 +1345,8 @@
 				</div>
 			</div>
 			<div id="divEquipSelButtonsRecent" v-show="!searchName.length && !buttonsChoice && recentEquip.length">
-				<div>{{$t('selector.recent_section')}}</div>
-				<div class="buttonWrap">
+				<div>{{$t('selector.recent_section')}} <a href="#" @click.prevent="onclickClearRecent">({{$t('selector.recent_clear')}})</a></div>
+				<div class="buttonWrap buttonWrapRecent">
 					<div v-for="btn in recentEquip" class="selButton" @click="onclickButtonEquip(btn)">
 						<div><img :src="'assets/items/' + btn.imgName + '.png'" /></div>
 						<div>{{$t(btn.nameKey)}}</div>
