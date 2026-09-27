@@ -420,6 +420,9 @@
 	"time_statistics": "演出時間",
 	"warn_time_statistics": "警告：演出時間の計算は現在開発途中（WIP）です。正確ではなく、今後更新される可能性があります。",
 	"average_time": "平均総時間",
+	"stddev_time": "標準偏差",
+	"time_histogram": "総時間の分布（全出撃）",
+	"time_histogram_desc": "シミュレートした全出撃における総所要時間の分布",
 	"all_runs": "全出撃",
 	"all_runs_desc": "各演出は撤退を含むすべての出撃を対象に集計する．平均値を求める際は最終ノードに到達した出撃回数で割る．",
 	"completed_runs": "ボス到達のみ",
@@ -1010,6 +1013,7 @@
 	"ship_name_0": "",
 	"equip_name_0": "",
 	"selector": {
+		"recent_section": "最近使ったもの",
 		"ship_section_Shipgirls": "艦娘",
 		"ship_section_Abyssals": "深海棲艦",
 		"ship_section_Extra": "EXTRA",

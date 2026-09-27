@@ -628,3 +628,35 @@ div.scrollAnchor > div {
 	position: absolute;
 	top: -30px;
 }
+.divTimeHistogram {
+	margin-top: 10px;
+}
+.timeHistogramBar {
+	display: flex;
+	align-items: center;
+	font-size: 12px;
+	line-height: 18px;
+}
+.timeHistogramBarLabel {
+	width: 70px;
+	text-align: right;
+	padding-right: 6px;
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+.timeHistogramBarTrack {
+	flex-grow: 1;
+	background-color: #eee;
+	height: 14px;
+	position: relative;
+}
+.timeHistogramBarFill {
+	background-color: #6699cc;
+	height: 100%;
+}
+.timeHistogramBarCount {
+	width: 90px;
+	padding-left: 6px;
+	flex-shrink: 0;
+	white-space: nowrap;
+}

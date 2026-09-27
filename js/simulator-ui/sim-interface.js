@@ -115,8 +115,8 @@ var SIM = {
 			totalCanAdvanceAfter: 0,
 			nodes: [],
 			time: {
-				all: { num: 0, time: 0, animations: {} },
-				completed: { num: 0, time: 0, animations: {} },
+				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
+				completed: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
 				nodes: [],
 			},
 		};
@@ -275,8 +275,18 @@ var SIM = {
 		
 		if (this._results.replay) {
 			let resultsTime = COMMON.TIME_BATTLE.getTimeStats(this._results.replay);
+			let timeBucketUnit = COMMON.TIME_BATTLE.ANIMATIONS.find(a => a.key == 'bucket').time;
+			let timeWithBucket = resultsTime.time + numBuckets*timeBucketUnit;
+			// bin width of 1s is stored so the UI can regroup into wider display buckets after the fact
+			let binKey = Math.max(0,Math.round(resultsTime.time));
+			let binKeyBucket = Math.max(0,Math.round(timeWithBucket));
+			
 			this._results.time.all.num++;
 			this._results.time.all.time += resultsTime.time;
+			this._results.time.all.sumSq += resultsTime.time*resultsTime.time;
+			this._results.time.all.sumSqBucket += timeWithBucket*timeWithBucket;
+			this._results.time.all.histogram[binKey] = (this._results.time.all.histogram[binKey]||0) + 1;
+			this._results.time.all.histogramBucket[binKeyBucket] = (this._results.time.all.histogramBucket[binKeyBucket]||0) + 1;
 			for (let key in resultsTime.animations) {
 				if (!this._results.time.all.animations[key]) this._results.time.all.animations[key] = 0;
 				this._results.time.all.animations[key] += resultsTime.animations[key];
@@ -286,6 +296,10 @@ var SIM = {
 			if (this.simResultPrev && this.simResultPrev.battleNum == dataInput.nodes.length) {
 				this._results.time.completed.num++;
 				this._results.time.completed.time += resultsTime.time;
+				this._results.time.completed.sumSq += resultsTime.time*resultsTime.time;
+				this._results.time.completed.sumSqBucket += timeWithBucket*timeWithBucket;
+				this._results.time.completed.histogram[binKey] = (this._results.time.completed.histogram[binKey]||0) + 1;
+				this._results.time.completed.histogramBucket[binKeyBucket] = (this._results.time.completed.histogramBucket[binKeyBucket]||0) + 1;
 				for (let key in resultsTime.animations) {
 					if (!this._results.time.completed.animations[key]) this._results.time.completed.animations[key] = 0;
 					this._results.time.completed.animations[key] += resultsTime.animations[key];

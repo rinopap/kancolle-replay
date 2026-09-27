@@ -8,6 +8,31 @@ var CONST = window.COMMON.getConst({
 var SHIP_LIST_ORDER = {}, EQUIP_LIST_ORDER = {};
 var SHIP_CATEGORIES = {}, EQUIP_CATEGORIES = {};
 
+// "recently selected" history, kept in localStorage so it persists across sessions
+var RECENT_MAX = 16;
+var RECENT_KEY_SHIP = 'sim2_recentShips';
+var RECENT_KEY_EQUIP = 'sim2_recentEquip';
+function getRecentIds(storageKey) {
+	try {
+		let arr = JSON.parse(localStorage[storageKey] || '[]');
+		return Array.isArray(arr) ? arr.map(Number).filter(id => id) : [];
+	} catch (e) {
+		return [];
+	}
+}
+function pushRecentId(storageKey,id) {
+	id = +id;
+	if (!id) return; // ignore "none"/delete selections (id 0)
+	let arr = getRecentIds(storageKey).filter(existingId => existingId !== id);
+	arr.unshift(id);
+	if (arr.length > RECENT_MAX) arr.length = RECENT_MAX;
+	try {
+		localStorage[storageKey] = JSON.stringify(arr);
+	} catch (e) {
+		//storage unavailable/full; recent history just won't persist
+	}
+}
+
 var METHODS_COMMON = {
 	callbackSubmit: null,
 	callbackClose: null,
@@ -156,10 +181,15 @@ var UI_SHIPSELECTOR = Vue.createApp({
 		],
 		
 		buttonsChoice: null,
+		recentShips: [],
 	}),
 	methods: {
 		doOpen: function(keyInit) {
 			this.active = true;
+			this.recentShips = getRecentIds(RECENT_KEY_SHIP).map(id => {
+				let s = SHIPDATA[id];
+				return s ? { id: id, nameKey: 'ship_name_'+s.name, imgName: s.image } : null;
+			}).filter(x => x);
 			if (keyInit && this.$i18n.locale == 'en') {
 				this.searchName = keyInit;
 				this.oninputSearch();
@@ -168,7 +198,10 @@ var UI_SHIPSELECTOR = Vue.createApp({
 			if (COMMON.modalCount++ <= 0) document.body.style.overflow = 'hidden';
 		},
 		doClose: METHODS_COMMON.methods.doClose,
-		doSubmit: METHODS_COMMON.methods.doSubmit,
+		doSubmit: function(mstId) {
+			pushRecentId(RECENT_KEY_SHIP,mstId);
+			METHODS_COMMON.methods.doSubmit.call(this,mstId);
+		},
 		
 		addResult: METHODS_COMMON.methods.addResult,
 		oninputSearch: function() { METHODS_COMMON.methods.oninputSearch.call(this,SHIP_LIST_ORDER[this.$i18n.locale]); },
@@ -227,10 +260,15 @@ var UI_EQUIPSELECTOR = Vue.createApp({
 		],
 		
 		buttonsChoice: null,
+		recentEquip: [],
 	}),
 	methods: {
 		doOpen: function(keyInit) {
 			this.active = true;
+			this.recentEquip = getRecentIds(RECENT_KEY_EQUIP).map(id => {
+				let eq = EQDATA[id];
+				return eq ? { id: id, nameKey: 'equip_name_'+eq.name, imgName: eq.image || (EQTDATA[eq.type] && EQTDATA[eq.type].image) } : null;
+			}).filter(x => x);
 			if (keyInit) {
 				this.searchName = keyInit;
 				this.oninputSearch();
@@ -239,7 +277,10 @@ var UI_EQUIPSELECTOR = Vue.createApp({
 			if (COMMON.modalCount++ <= 0) document.body.style.overflow = 'hidden';
 		},
 		doClose: METHODS_COMMON.methods.doClose,
-		doSubmit: METHODS_COMMON.methods.doSubmit,
+		doSubmit: function(mstId) {
+			pushRecentId(RECENT_KEY_EQUIP,mstId);
+			METHODS_COMMON.methods.doSubmit.call(this,mstId);
+		},
 		
 		addResult: METHODS_COMMON.methods.addResult,
 		oninputSearch: function() { METHODS_COMMON.methods.oninputSearch.call(this,EQUIP_LIST_ORDER[this.$i18n.locale]); },

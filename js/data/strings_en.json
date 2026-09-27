@@ -420,12 +420,15 @@
 	"time_statistics": "Time Statistics",
 	"warn_time_statistics": "Warning: Time calculations are WIP. They are NOT precise and are subject to change.",
 	"average_time": "Average Time",
+	"stddev_time": "Std Dev",
 	"all_runs": "All",
 	"all_runs_desc": "Using all runs including retreats, averaged over number of runs which reach final node",
 	"completed_runs": "Completed",
 	"completed_runs_desc": "Using only runs which reach final node",
 	"x_sec": "{0}s",
 	"include_repair_with_bucket": "Include \"Repair with Bucket\" time in \"Average Time\"",
+	"time_histogram": "Total Time Distribution (All Runs)",
+	"time_histogram_desc": "Distribution of total sortie time across all simulated runs",
 	
 	"node_n": "Node {0}",
 	"battle_type": "Battle Type",
@@ -1010,6 +1013,7 @@
 	"ship_name_0": "",
 	"equip_name_0": "",
 	"selector": {
+		"recent_section": "Recently Used",
 		"ship_section_Shipgirls": "Shipgirls",
 		"ship_section_Abyssals": "Abyssals",
 		"ship_section_Extra": "Extra",

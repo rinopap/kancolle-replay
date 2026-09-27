@@ -795,6 +795,7 @@
 							<table class="multi">
 							<tr><th>&nbsp;</th><th><span class="tooltip" :title="$t('all_runs_desc')">{{$t('all_runs')}}</span></th><th><span class="tooltip" :title="$t('completed_runs_desc')">{{$t('completed_runs')}}</span></th><th v-for="n in results.numNodes">{{n}}</th></tr>
 							<tr><th style="text-align:right">{{$t('average_time')}}</th><td>{{$t('x_sec',[resultsTimeAll])}}</td><td>{{$t('x_sec',[resultsTimeCompleted])}}</td><td v-for="time in results.time.timeNodes">{{$t('x_sec',[time])}}</td></tr>
+							<tr><th style="text-align:right">{{$t('stddev_time')}}</th><td>±{{$t('x_sec',[resultsTimeStddevAll])}}</td><td>±{{$t('x_sec',[resultsTimeStddevCompleted])}}</td></tr>
 							<tr class="tableSpace"></tr>
 							<tr v-for="animation in results.time.animations" v-show="animation.numAll"><th style="text-align:right">{{$t('animation_header.' + animation.key, { sec: animation.time })}}</th><td>{{animation.numAll}}</td><td>{{animation.numCompleted}}</td><td v-for="num in animation.numNodes">{{num}}</td></tr>
 							<tr class="tableSpace"></tr>
@@ -802,6 +803,15 @@
 							<tr class="tableSpace"></tr>
 							</table>
 							<div><label><input type="checkbox" v-model="results.timeIncludeBucket"/>{{$t('include_repair_with_bucket')}}</label></div>
+							<div class="divTimeHistogram" v-show="resultsTimeHistogramBars.length">
+								<div>{{$t('time_histogram')}}</div>
+								<div class="note">{{$t('time_histogram_desc')}}</div>
+								<div class="timeHistogramBar" v-for="bar in resultsTimeHistogramBars">
+									<div class="timeHistogramBarLabel">{{$t('x_sec',[bar.label])}}</div>
+									<div class="timeHistogramBarTrack"><div class="timeHistogramBarFill" :style="{width: bar.barPct + '%'}"></div></div>
+									<div class="timeHistogramBarCount">{{bar.count}} ({{bar.pct}}%)</div>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -1262,6 +1272,15 @@
 					</div>
 				</div>
 			</div>
+			<div id="divShipSelButtonsRecent" v-show="!searchName.length && !buttonsChoice && recentShips.length">
+				<div>{{$t('selector.recent_section')}}</div>
+				<div class="buttonWrap">
+					<div v-for="btn in recentShips" class="selButton" @click="onclickButtonShip(btn)">
+						<div><img :src="'assets/icons/' + btn.imgName" /></div>
+						<div>{{$t(btn.nameKey)}}</div>
+					</div>
+				</div>
+			</div>
 			<div id="divShipSelButtonsCat" v-show="!searchName.length && !buttonsChoice">
 				<div>{{$t('selector.ship_section_Shipgirls')}}</div>
 				<div class="buttonWrap">
@@ -1311,6 +1330,15 @@
 				<div id="divEquipSelResults" v-show="searchResults.length">
 					<div v-for="result in searchResults" :ref="result.ref" :class="{selectResult:1,selected:searchSelected==result.id}" @mouseover="onmouseoverResult(result)" @click="onclickResult(result)">
 						<img :src="'assets/items/'+result.imgName+'.png'"/>{{result.namePre}}<span class="underlined">{{result.nameUnderline}}</span>{{result.namePost}}
+					</div>
+				</div>
+			</div>
+			<div id="divEquipSelButtonsRecent" v-show="!searchName.length && !buttonsChoice && recentEquip.length">
+				<div>{{$t('selector.recent_section')}}</div>
+				<div class="buttonWrap">
+					<div v-for="btn in recentEquip" class="selButton" @click="onclickButtonEquip(btn)">
+						<div><img :src="'assets/items/' + btn.imgName + '.png'" /></div>
+						<div>{{$t(btn.nameKey)}}</div>
 					</div>
 				</div>
 			</div>

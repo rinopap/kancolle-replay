@@ -211,7 +211,7 @@ var UI_MAIN = Vue.createApp({
 			fuelTP: 0, ammoTP: 0, steelTP: 0, bauxTP: 0, bucketTP: 0, dameconTP: 0, underwayTP: 0,
 			perHPRes: 1, perTPRes: 1,
 			showTime: false,
-			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0 },
+			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0 },
 			timeIncludeBucket: false,
 		},
 		
@@ -476,6 +476,33 @@ var UI_MAIN = Vue.createApp({
 		resultsTimeCompleted: function() {
 			return Math.round(1000*(this.results.time._timeCompletedBasic + (this.results.timeIncludeBucket ? this.results.time._timeCompletedBucket : 0)))/1000;
 		},
+		resultsTimeStddevAll: function() {
+			return Math.round(1000*(this.results.timeIncludeBucket ? this.results.time._stddevAllBucket : this.results.time._stddevAllBasic))/1000;
+		},
+		resultsTimeStddevCompleted: function() {
+			return Math.round(1000*(this.results.timeIncludeBucket ? this.results.time._stddevCompletedBucket : this.results.time._stddevCompletedBasic))/1000;
+		},
+		resultsTimeHistogramBars: function() {
+			let hist = this.results.timeIncludeBucket ? this.results.time._histogramAllBucket : this.results.time._histogramAll;
+			let totalNum = this.results.time._histogramNumAll;
+			let keys = Object.keys(hist).map(Number);
+			if (!keys.length || !totalNum) return [];
+			let min = Math.min(...keys), max = Math.max(...keys);
+			let targetBars = 20;
+			let binWidth = Math.max(1, Math.ceil((max-min+1) / targetBars));
+			let bars = [];
+			for (let start = min; start <= max; start += binWidth) {
+				let end = start + binWidth - 1;
+				let count = 0;
+				for (let k = start; k <= end; k++) count += hist[k] || 0;
+				if (!count && !bars.length) continue; // trim leading empty bins
+				bars.push({ label: (binWidth > 1 ? start + '-' + end : '' + start), count: count, pct: Math.round(1000*count/totalNum)/10 });
+			}
+			while (bars.length && !bars.at(-1).count) bars.pop(); // trim trailing empty bins
+			let maxCount = Math.max(1,...bars.map(b => b.count));
+			for (let b of bars) b.barPct = Math.round(100*b.count/maxCount);
+			return bars;
+		},
 		
 		enableAntiSubRaid: {
 			get() { return !!this.settings.mechanics.length && this.settings.mechanics.find(m => m.key == 'antiSubRaid').enabled },
@@ -670,6 +697,24 @@ var UI_MAIN = Vue.createApp({
 				let timeBucket = COMMON.TIME_BATTLE.ANIMATIONS.find(a => a.key == 'bucket').time;
 				this.results.time._timeAllBucket = resultSim.time.all.animations.bucket * timeBucket / resultSim.time.completed.num;
 				this.results.time._timeCompletedBucket = resultSim.time.completed.animations.bucket * timeBucket / resultSim.time.all.num;
+				
+				// standard deviation of the per-run time distribution, computed from running
+				// sum-of-squares (Var = E[X^2] - E[X]^2), using each group's own natural mean
+				// (kept independent of the all/completed cross-averaging used for the display
+				// average above, so the variance math stays internally consistent)
+				let stddevOf = function(sumSq,sum,num) {
+					if (!num) return 0;
+					let mean = sum/num;
+					return Math.sqrt(Math.max(0, sumSq/num - mean*mean));
+				};
+				this.results.time._stddevAllBasic = stddevOf(resultSim.time.all.sumSq, resultSim.time.all.time, resultSim.time.all.num);
+				this.results.time._stddevCompletedBasic = stddevOf(resultSim.time.completed.sumSq, resultSim.time.completed.time, resultSim.time.completed.num);
+				this.results.time._stddevAllBucket = stddevOf(resultSim.time.all.sumSqBucket, resultSim.time.all.time + resultSim.time.all.animations.bucket*timeBucket, resultSim.time.all.num);
+				this.results.time._stddevCompletedBucket = stddevOf(resultSim.time.completed.sumSqBucket, resultSim.time.completed.time + resultSim.time.completed.animations.bucket*timeBucket, resultSim.time.completed.num);
+				
+				this.results.time._histogramAll = resultSim.time.all.histogram || {};
+				this.results.time._histogramAllBucket = resultSim.time.all.histogramBucket || {};
+				this.results.time._histogramNumAll = resultSim.time.all.num;
 				
 				this.results.time.timeNodes = resultSim.time.nodes.map(node => formatNum(node.time / node.num));
 				
