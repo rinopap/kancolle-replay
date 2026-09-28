@@ -665,3 +665,77 @@ div.scrollAnchor > div {
 	max-height: 90px;
 	overflow-y: auto;
 }
+
+#divMain {
+	padding-left: 84px;
+	box-sizing: border-box;
+}
+#divSimSlots {
+	position: fixed;
+	left: 0;
+	top: 60px;
+	width: 76px;
+	z-index: 90;
+	background-color: #DDEEFF;
+	border: 1px solid #99BBDD;
+	border-left: none;
+	border-radius: 0 6px 6px 0;
+	overflow: hidden;
+}
+#divSimSlots .simSlotHeader {
+	font-size: 11px;
+	text-align: center;
+	padding: 3px 0;
+	color: #446;
+	background-color: #C4DDF5;
+	cursor: help;
+}
+#divSimSlots .simSlotTab {
+	position: relative;
+	cursor: pointer;
+	font-size: 14px;
+	font-weight: bold;
+	text-align: center;
+	padding: 12px 2px;
+	border-top: 1px solid #99BBDD;
+	user-select: none;
+}
+#divSimSlots .simSlotTab:hover {
+	background-color: #afdaff;
+}
+#divSimSlots .simSlotTab.active {
+	background-color: #4EABF5;
+	color: #fff;
+}
+#divSimSlots .simSlotTab.disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+#divSimSlots .simSlotDot {
+	position: absolute;
+	right: 4px;
+	top: 3px;
+	font-size: 8px;
+	color: #2a8a2a;
+}
+#divSimSlots .simSlotTab.active .simSlotDot {
+	color: #cfffcf;
+}
+#divSimSlotCompare {
+	margin-bottom: 16px;
+}
+#divSimSlotCompare table {
+	border-collapse: collapse;
+}
+#divSimSlotCompare th, #divSimSlotCompare td {
+	border: 1px solid #ccc;
+	padding: 2px 10px;
+	text-align: center;
+}
+#divSimSlotCompare th.simSlotColActive {
+	background-color: #d6ebff;
+}
+#divSimSlotCompare td.simSlotBest {
+	background-color: #d9f5d0;
+	font-weight: bold;
+}

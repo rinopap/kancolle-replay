@@ -52,12 +52,20 @@ var MECHANICS_LIST = [
 
 
 
+// "sim slots" (tabs A/B/C): each slot holds only the player side (fleets/support/friend/LBAS);
+// enemy battles and settings are shared across slots so slots can be compared on equal terms
+var SIM_SLOT_COUNT = 3;
+var SIM_SLOT_PLAYER_KEYS = ['fleetFMain','fleetFSupportN','fleetFSupportB','fleetsFFriend','useSupportN','useSupportB','useFF','landBases'];
+var SIM_SLOT_STORAGE_KEY = 'sim2_slots';
+
 var UI_MAIN = Vue.createApp({
 	data: () => ({
 		fleetFMain: FLEET_MODEL.getBlankFleet({ isPlayer: 1 }),
 		fleetFSupportN: FLEET_MODEL.getBlankFleet({ isSupport: 1 }),
 		fleetFSupportB: FLEET_MODEL.getBlankFleet({ isSupport: 1 }),
 		fleetsFFriend: [],
+		simSlots: Array.from({length:SIM_SLOT_COUNT},() => ({ save: null, results: null, summary: null })),
+		simSlotActive: 0,
 		landBases: FLEET_MODEL.getBlankLandBases(),
 		lbExpanded: false,
 		useSupportN: true,
@@ -260,6 +268,7 @@ var UI_MAIN = Vue.createApp({
 			let dataSave = null, dataReplay = null;
 			let finishInit = function() {
 				CONVERT.loadSave(dataSave,this);
+				if (!dataReplay) this._loadSlotsFromStorage();
 				this.canSave = true;
 				if (this.autoBonus) {
 					UI_AUTOBONUS.doOpenPreloader(this.autoBonus);
@@ -376,6 +385,44 @@ var UI_MAIN = Vue.createApp({
 		});
 	},
 	computed: {
+		simSlotCompareCols: function() {
+			return this.simSlots.map((slot,ind) => ({ ind: ind, name: this.simSlotName(ind), summary: slot.summary })).filter(c => c.summary);
+		},
+		simSlotCompareRows: function() {
+			let cols = this.simSlotCompareCols;
+			if (cols.length < 2) return [];
+			// dir: 1 = higher is better, -1 = lower is better, 0 = no highlight
+			let defs = [
+				{ key: 'totalNum', label: 'number_of_runs', dir: 0 },
+				{ key: 'rankS', label: 'cond_rankS', dir: 1 },
+				{ key: 'rankA', label: 'cond_rankA', dir: 1 },
+				{ key: 'rankB', label: 'cond_rankB', dir: 1 },
+				{ key: 'flagSunk', label: 'cond_flagsunk', dir: 1 },
+				{ key: 'retreat', label: 'retreat', dir: -1 },
+				{ key: 'fuel', label: 'fuel', dir: -1 },
+				{ key: 'ammo', label: 'ammo', dir: -1 },
+				{ key: 'steel', label: 'steel', dir: -1 },
+				{ key: 'baux', label: 'baux', dir: -1 },
+				{ key: 'bucket', label: 'bucket', dir: -1 },
+				{ key: 'damecon', label: 'repair_team', dir: -1 },
+				{ key: 'time', label: 'average_time', dir: -1 },
+				{ key: 'timeStddev', label: 'stddev_time', dir: 0 },
+			];
+			let rows = [];
+			for (let def of defs) {
+				let vals = cols.map(c => c.summary[def.key]);
+				if (vals.every(v => v == null)) continue;
+				let nums = vals.filter(v => v != null);
+				let best = def.dir == 1 ? Math.max(...nums) : def.dir == -1 ? Math.min(...nums) : null;
+				let allSame = nums.every(v => v == nums[0]);
+				rows.push({
+					key: def.key,
+					label: def.label,
+					cells: vals.map(v => ({ text: v == null ? '-' : v, best: def.dir != 0 && !allSame && v === best })),
+				});
+			}
+			return rows;
+		},
 		canDeleteBattles: function() {
 			return this.battles.length > 1;
 		},
@@ -564,6 +611,95 @@ var UI_MAIN = Vue.createApp({
 			if (comps.length <= 1) return;
 			COMMON.global.fleetEditorMoveTemp(elFrom);
 			comps.pop();
+		},
+		
+		simSlotName: function(ind) {
+			return String.fromCharCode(65+ind);
+		},
+		_snapshotSlotSave: function() {
+			let save = CONVERT.uiToSave(this);
+			let filtered = { version: save.version };
+			for (let key of SIM_SLOT_PLAYER_KEYS) {
+				if (save[key] !== undefined) filtered[key] = save[key];
+			}
+			return JSON.parse(JSON.stringify(filtered));
+		},
+		_resetPlayerSide: function() {
+			COMMON.global.fleetEditorMoveTemp();
+			this.fleetFMain = FLEET_MODEL.getBlankFleet({ isPlayer: 1 });
+			this.fleetFSupportN = FLEET_MODEL.getBlankFleet({ isSupport: 1 });
+			this.fleetFSupportB = FLEET_MODEL.getBlankFleet({ isSupport: 1 });
+			this.fleetsFFriend = [];
+			this.addNewComp(this.fleetsFFriend,{ isFriend: 1 });
+			this.landBases = FLEET_MODEL.getBlankLandBases();
+			this.useSupportN = true;
+			this.useSupportB = true;
+			this.useFF = true;
+		},
+		_saveActiveSlot: function() {
+			let slot = this.simSlots[this.simSlotActive];
+			slot.save = this._snapshotSlotSave();
+			slot.results = this.results.active ? JSON.parse(JSON.stringify(this.results)) : null;
+		},
+		_captureSlotSummary: function() {
+			let r = this.results;
+			let summary = {
+				totalNum: r.totalNum,
+				rankS: r.rankS, rankA: r.rankA, rankB: r.rankB,
+				retreat: r.retreat, flagSunk: r.flagSunk,
+				fuel: Math.round(1000*(r.fuelSupply + r.fuelRepair))/1000,
+				ammo: r.ammoSupply, steel: r.steelRepair, baux: r.bauxSupply,
+				bucket: r.bucket, damecon: r.damecon,
+				time: null, timeStddev: null,
+			};
+			if (r.showTime) {
+				summary.time = this.resultsTimeAll;
+				summary.timeStddev = this.resultsTimeStddevAll;
+			}
+			this.simSlots[this.simSlotActive].summary = summary;
+		},
+		onclickSimSlot: function(ind) {
+			if (ind == this.simSlotActive || !this.canSim) return;
+			this._saveActiveSlot();
+			let prevSave = this.simSlots[this.simSlotActive].save;
+			let slot = this.simSlots[ind];
+			this.simSlotActive = ind;
+			// a slot opened for the first time starts as a copy of the slot we came from
+			if (!slot.save) slot.save = JSON.parse(JSON.stringify(prevSave));
+			this._resetPlayerSide();
+			CONVERT.loadSave(JSON.parse(JSON.stringify(slot.save)),this);
+			// stats accumulated in SIM belong to the previous slot's input; force a fresh run next time
+			SIM.resetStats();
+			if (slot.results) {
+				for (let key in slot.results) this.results[key] = slot.results[key];
+			} else {
+				this.results.active = false;
+				this.results.errors = [];
+				this.results.warnings = [];
+			}
+		},
+		_loadSlotsFromStorage: function() {
+			try {
+				let data = localStorage[SIM_SLOT_STORAGE_KEY] ? JSON.parse(localStorage[SIM_SLOT_STORAGE_KEY]) : null;
+				if (!data || !Array.isArray(data.slots)) return;
+				for (let i=0; i<SIM_SLOT_COUNT; i++) {
+					let s = data.slots[i];
+					if (!s) continue;
+					this.simSlots[i] = { save: s.save || null, results: null, summary: s.summary || null };
+				}
+				if (data.active >= 0 && data.active < SIM_SLOT_COUNT) this.simSlotActive = data.active;
+			} catch(e) {
+				console.error(e);
+			}
+		},
+		_saveSlotsToStorage: function() {
+			try {
+				this._saveActiveSlot();
+				let slots = this.simSlots.map(s => ({ save: s.save, summary: s.summary }));
+				localStorage[SIM_SLOT_STORAGE_KEY] = JSON.stringify({ active: this.simSlotActive, slots: slots });
+			} catch(e) {
+				console.error(e);
+			}
 		},
 		
 		updateResults: function(resultSim) {
@@ -832,6 +968,7 @@ var UI_MAIN = Vue.createApp({
 			if (res.result) {
 				this.results.active = true;
 				this.updateResults(res.result);
+				this._captureSlotSummary();
 				this.canSim = true;
 				this.showProgress = false;
 				console.log(res.result);
@@ -909,6 +1046,8 @@ var UI_MAIN = Vue.createApp({
 			if (!this.canSim) return;
 			this.results.active = false;
 			SIM.resetStats();
+			this.simSlots[this.simSlotActive].results = null;
+			this.simSlots[this.simSlotActive].summary = null;
 		},
 		onclickCancel: function() {
 			SIM.cancelRun = true;
@@ -1998,6 +2137,7 @@ var UI_BACKUP = Vue.createApp({
 				return;
 			}
 			localStorage.sim2 = save.data;
+			localStorage.removeItem(SIM_SLOT_STORAGE_KEY);
 			window.location.reload();
 		},
 		
@@ -2029,6 +2169,7 @@ var UI_BACKUP = Vue.createApp({
 			if (!this.confirmReset) return;
 			UI_MAIN.canSave = false;
 			localStorage.sim2 = '';
+			localStorage.removeItem(SIM_SLOT_STORAGE_KEY);
 			window.location.reload();
 		},
 		
@@ -2588,6 +2729,7 @@ document.body.onbeforeunload = function() {
 	if (UI_MAIN.canSave) {
 		localStorage.sim2 = JSON.stringify(CONVERT.uiToSave(UI_MAIN));
 		localStorage.sim2_g = JSON.stringify(CONVERT.uiToSaveGlobal(UI_MAIN));
+		UI_MAIN._saveSlotsToStorage();
 	}
 }
 

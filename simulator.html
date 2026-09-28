@@ -61,6 +61,12 @@
 				<span>&nbsp;{{$t('simulate_n_times',[numSim])}}</span>
 			</div>
 		</div>
+		<div id="divSimSlots">
+			<div class="simSlotHeader" :title="$t('sim_slots_tooltip')">{{$t('sim_slots')}}</div>
+			<div v-for="(slot,ind) in simSlots" class="simSlotTab" :class="{ active: ind == simSlotActive, disabled: !canSim && ind != simSlotActive }" @click="onclickSimSlot(ind)">
+				{{$t('sim_slot_n',[simSlotName(ind)])}}<span class="simSlotDot" v-show="slot.summary">&#9679;</span>
+			</div>
+		</div>
 		<div class="scrollAnchor"><div ref="divPlayerScroll"></div></div>
 		<div style="height:10px"></div>
 		
@@ -528,6 +534,14 @@
 				<div v-for="warning in results.warnings">{{$t('sim_warning.' + warning.key, warning.args)}}</div>
 			</div>
 			
+			<div id="divSimSlotCompare" v-show="simSlotCompareRows.length">
+				<h3>{{$t('sim_slot_compare')}}</h3>
+				<div class="note">{{$t('sim_slot_compare_note')}}</div>
+				<table>
+					<tr><th></th><th v-for="col in simSlotCompareCols" :class="{ simSlotColActive: col.ind == simSlotActive }">{{$t('sim_slot_n',[col.name])}}</th></tr>
+					<tr v-for="row in simSlotCompareRows"><th style="text-align:right">{{$t(row.label)}}</th><td v-for="cell in row.cells" :class="{ simSlotBest: cell.best }">{{cell.text}}</td></tr>
+				</table>
+			</div>
 			<div id="divResults" ref="divResults" v-show="results.active">
 				<h3>
 					{{$t('statistics')}}
