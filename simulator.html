@@ -76,8 +76,12 @@
 				&nbsp;&nbsp;&nbsp;&nbsp;
 				<input type="button" :value="$t('save_load_simulator_backup')" @click="onclickBackup"/>&nbsp;
 				<input type="button" :value="$t('import_export_deckbuilder_format')" @click="onclickDeckbuilder"/>&nbsp;
+				&nbsp;&nbsp;
+				<input type="button" value="&#8630;" :title="$t('undo')" :disabled="!canUndo" @click="onclickUndo"/>
+				<input type="button" value="&#8631;" :title="$t('redo')" :disabled="!canRedo" @click="onclickRedo"/>
 			</div>
-			<h2>{{$t('fleets')}}</h2>
+			<h2 class="toggleHeader" @click="toggleSection('player')">{{$t('fleets')}} <span class="toggleArrow">{{sectionsOpen.player ? '&#9660;' : '&#9654;'}}</span></h2>
+			<div v-show="sectionsOpen.player">
 			<div class="fleetSection">
 				<div class="scrollAnchor"><div ref="divPlayerMainScroll"></div></div>
 				<vfleet :fleet="fleetFMain" :fleetname="$t('main_fleet')" ref="fleetFMain"></vfleet>
@@ -127,12 +131,14 @@
 					</div>
 				</div>
 			</div>
+			</div>
 		</div>
 		
 		<hr>
 		<div class="scrollAnchor"><div ref="divBattlesScroll"></div></div>
 		<div id="divBattles">
-			<h2>{{$t('battles')}}</h2>
+			<h2 class="toggleHeader" @click="toggleSection('battles')">{{$t('battles')}} <span class="toggleArrow">{{sectionsOpen.battles ? '&#9660;' : '&#9654;'}}</span></h2>
+			<div v-show="sectionsOpen.battles">
 			<div class="battleNext">
 				<input type="button" :value="$t('insert_node')" @click="onclickInsertBattle(0)" />
 			</div>
@@ -143,12 +149,14 @@
 					<input type="button" :value="$t('insert_node')" @click="onclickInsertBattle(battle.ind+1)" />
 				</div>
 			</div>
+			</div>
 		</div>
 		
 		<hr>
 		<div class="scrollAnchor"><div ref="divSettingsScroll"></div></div>
 		<div id="divSettings">
-			<h2>{{$t('settings')}}</h2>
+			<h2 class="toggleHeader" @click="toggleSection('settings')">{{$t('settings')}} <span class="toggleArrow">{{sectionsOpen.settings ? '&#9660;' : '&#9654;'}}</span></h2>
+			<div v-show="sectionsOpen.settings">
 			<div>
 				<div><label><input type="checkbox" v-model="settings.retreatOnTaiha" /> <i18n-t keypath="retreat_on_taiha" scope="global"><template v-slot:img_taiha><img src="assets/stats/taiha.png"/></template></i18n-t></label> <img v-show="!settings.retreatOnTaiha" src="assets/stats/kuso.png" /></div>
 				<div style="margin-left:20px"><i18n-t keypath="retreat_on_taiha_even" scope="global">
@@ -481,11 +489,13 @@
 			<div>
 				<input type="button" :value="$t('restore_defaults')" @click="onclickRestoreSettings"/>
 			</div>
+			</div>
 		</div>
 		<hr>
 		
 		<div class="scrollAnchor"><div ref="divSimulationScroll"></div></div>
-		<h2>{{$t('simulation')}}</h2>
+		<h2 class="toggleHeader" @click="toggleSection('simulate')">{{$t('simulation')}} <span class="toggleArrow">{{sectionsOpen.simulate ? '&#9660;' : '&#9654;'}}</span></h2>
+		<div v-show="sectionsOpen.simulate">
 		<div id="divSimWatch">
 			<div><input type="button" :value="$t('watch_sortie')" :disabled="!canSim" @click="onclickWatch"/> {{$t('opens_in_replayer')}}</div>
 			<div style="margin-left:26px"><span>{{$t('extra_condition')}}: </span>
@@ -521,6 +531,7 @@
 				<input type="button" :value="$t('clear')" v-show="results.active&&canSim" @click="onclickClear"/>
 			</div>
 		</div>
+		</div>
 		<div id="divResultsOuter">
 			<div style="display:flex;gap:10px" v-show="!canSim && showProgress">
 				<div class="progressBarOuter"><div class="progressBarInner" :style="{width:simProgressPercent+'%'}"></div></div>
@@ -535,18 +546,21 @@
 			</div>
 			
 			<div id="divSimSlotCompare" v-show="simSlotCompareRows.length">
-				<h3>{{$t('sim_slot_compare')}}</h3>
+				<h3 class="toggleHeader" @click="toggleSection('compare')">{{$t('sim_slot_compare')}} <span class="toggleArrow">{{sectionsOpen.compare ? '&#9660;' : '&#9654;'}}</span></h3>
+				<div v-show="sectionsOpen.compare">
 				<div class="note">{{$t('sim_slot_compare_note')}}</div>
 				<table>
 					<tr><th></th><th v-for="col in simSlotCompareCols" :class="{ simSlotColActive: col.ind == simSlotActive }">{{$t('sim_slot_n',[col.name])}}</th></tr>
 					<tr v-for="row in simSlotCompareRows"><th style="text-align:right">{{$t(row.label)}}</th><td v-for="cell in row.cells" :class="{ simSlotBest: cell.best }">{{cell.text}}</td></tr>
 				</table>
+				</div>
 			</div>
 			<div id="divResults" ref="divResults" v-show="results.active">
 				<h3>
-					{{$t('statistics')}}
-					<span :title="$t('stats_ss_tooltip')"><svg @click="onclickScreenShot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 22px;cursor: pointer;fill: #9b9b9b;margin-left: 4px;"><path d="M20,4H16.83L15,2H9L7.17,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M20,18H4V6H8.05L9.88,4H14.12L15.95,6H20V18M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15Z" /></svg></span>
+					<span class="toggleHeader" @click="toggleSection('results')">{{$t('statistics')}} <span class="toggleArrow">{{sectionsOpen.results ? '&#9660;' : '&#9654;'}}</span></span>
+					<span :title="$t('stats_ss_tooltip')"><svg @click.stop="onclickScreenShot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 22px;cursor: pointer;fill: #9b9b9b;margin-left: 4px;"><path d="M20,4H16.83L15,2H9L7.17,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M20,18H4V6H8.05L9.88,4H14.12L15.95,6H20V18M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15Z" /></svg></span>
 				</h3>
+				<div v-show="sectionsOpen.results">
 				<div class="note">{{$t('note_calc_wip')}}</div>
 				<div class="noteBold" v-show="results.showCFWarning">{{$t('warn_combined_fleet')}}</div>
 				<div>{{$t('number_of_runs')}}: {{results.totalNum}}</div>
@@ -830,6 +844,7 @@
 						</div>
 					</div>
 				</div>
+				</div>
 			</div>
 			<div v-show="results.active">
 				<input type="button" value="Show More" v-show="!results.showMore" @click="results.showMore=true"/>
@@ -844,8 +859,8 @@
 	
 	<div id="divOther">
 		<div id="divChangeLog">
-			<div><span class="header">{{$t('change_log_header')}}:</span></div>
-			<div v-for="(obj,idx) in $i18n.messages[$i18n.fallbackLocale].change_log">{{obj.date}} - <i18n-t :keypath="'change_log[' + idx + '].txt'" scope="global">
+			<div class="toggleHeader" @click="showChangeLog = !showChangeLog"><span class="header">{{$t('change_log_header')}}:</span> <span class="toggleArrow">{{showChangeLog ? '&#9660;' : '&#9654;'}}</span></div>
+			<div v-show="showChangeLog" v-for="(obj,idx) in $i18n.messages[$i18n.fallbackLocale].change_log">{{obj.date}} - <i18n-t :keypath="'change_log[' + idx + '].txt'" scope="global">
 				<template v-for="(link,i) in obj.links" v-slot:['link'+i]><a :href="$t('change_log[' + idx + '].links[' + i + '].url')" target="_blank">{{$t('change_log[' + idx + '].links[' + i + '].txt')}}</a></template>
 			</i18n-t></div>
 		</div>
@@ -854,6 +869,7 @@
 				<template v-slot:link_github><a href="https://github.com/KC3Kai/kancolle-replay/issues">Github</a></template>
 				<template v-slot:link_discord><a href="https://discord.gg/RtSadWM">English KC Discord</a></template>
 			</i18n-t></div>
+			<div class="divEditorCredit">{{$t('editor_credit')}}: <a href="https://github.com/rinopap" target="_blank">rinopap</a></div>
 		</div>
 	</div>
 	
@@ -1053,16 +1069,6 @@
 					</select>
 					<select v-model="loadPresetNode" v-show="loadPresetArea" @change="onchangePresetNode"><option v-for="o in presetListNode" :value="o.value">{{o.name}}</option></select>
 					<select v-model="loadPresetComp" v-show="loadPresetArea" @change="onchangePreset"><option v-for="o in presetListComp" :value="o.value">{{o.name}}</option></select>
-					<a href="#" v-show="presetMapData" @click.prevent="showPresetMap = !showPresetMap">{{$t('preset_map_toggle')}}</a>
-				</div>
-				<div class="presetMapWrap" v-show="showPresetMap && presetMapData">
-					<div class="presetMap" :style="{backgroundImage: presetMapData ? 'url(' + presetMapData.img + ')' : ''}">
-						<div v-for="marker in (presetMapData ? presetMapData.markers : [])"
-							class="presetMapNode" :class="{presetMapNodeActive: marker.letter == loadPresetNode, presetMapNodeDisabled: !marker.hasData}"
-							:style="{left: marker.xPct + '%', top: marker.yPct + '%'}"
-							:title="marker.hasData ? marker.letter : marker.letter + ' (' + $t('preset_map_no_data') + ')'"
-							@click="onclickPresetMapNode(marker)">{{marker.letter}}</div>
-					</div>
 				</div>
 			</div>
 			<div class="importOther">
@@ -1622,6 +1628,15 @@
 						<td><select class="suggestion" v-model="selectLetter" @change="onchangeSelectLetter"><option value="0"></option><option v-for="option in optionsLetter" :value="option.edges">{{option.letter}}</option></select></td>
 					</tr>
 					</table>
+				</div>
+				<div class="presetMapWrap" v-show="mapPickerData">
+					<div class="presetMap" :style="{backgroundImage: mapPickerData ? 'url(' + mapPickerData.img + ')' : ''}">
+						<div v-for="marker in (mapPickerData ? mapPickerData.markers : [])"
+							class="presetMapNode" :class="{presetMapNodeActive: marker.edges == edges, presetMapNodeDisabled: !marker.edges}"
+							:style="{left: marker.xPct + '%', top: marker.yPct + '%'}"
+							:title="marker.letter"
+							@click="onclickMapNode(marker)">{{marker.letter}}</div>
+					</div>
 				</div>
 				<div>
 					<table v-show="!isFriendFleet">

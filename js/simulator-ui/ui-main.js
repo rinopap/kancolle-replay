@@ -58,14 +58,29 @@ var SIM_SLOT_COUNT = 3;
 var SIM_SLOT_PLAYER_KEYS = ['fleetFMain','fleetFSupportN','fleetFSupportB','fleetsFFriend','useSupportN','useSupportB','useFF','landBases'];
 var SIM_SLOT_STORAGE_KEY = 'sim2_slots';
 
+var UNDO_MAX = 50;
+var UNDO_DEBOUNCE_MS = 700;
+// undo/redo is scoped to the player's own ships/equipment/fleets (same fields as the sim
+// slots above) because CONVERT.loadSave only ever grows arrays, never shrinks them back
+// down -- restoring a snapshot has to fully rebuild these fields first (see _resetPlayerSide),
+// which isn't safe to do for battles/enemy comps without risking data loss, so those are
+// intentionally left out of undo/redo for now
+var UNDO_WATCH_KEYS = SIM_SLOT_PLAYER_KEYS;
+
 var UI_MAIN = Vue.createApp({
 	data: () => ({
 		fleetFMain: FLEET_MODEL.getBlankFleet({ isPlayer: 1 }),
 		fleetFSupportN: FLEET_MODEL.getBlankFleet({ isSupport: 1 }),
 		fleetFSupportB: FLEET_MODEL.getBlankFleet({ isSupport: 1 }),
 		fleetsFFriend: [],
-		simSlots: Array.from({length:SIM_SLOT_COUNT},() => ({ save: null, results: null, summary: null })),
+		simSlots: Array.from({length:SIM_SLOT_COUNT},() => ({ save: null, results: null, summary: null, undoStack: null, redoStack: null })),
 		simSlotActive: 0,
+		showChangeLog: false,
+		undoStack: [],
+		redoStack: [],
+		sectionsOpen: { player: true, battles: true, settings: true, simulate: true, compare: true, results: true },
+		_undoTimer: null,
+		_undoApplying: false,
 		landBases: FLEET_MODEL.getBlankLandBases(),
 		lbExpanded: false,
 		useSupportN: true,
@@ -241,6 +256,13 @@ var UI_MAIN = Vue.createApp({
 		
 		this.addNewComp(this.fleetsFFriend,{ isFriend: 1 });
 		
+		document.addEventListener('keydown',function(e) {
+			if (!(e.ctrlKey || e.metaKey)) return;
+			let key = e.key.toLowerCase();
+			if (key == 'z' && !e.shiftKey) { e.preventDefault(); this.onclickUndo(); }
+			else if (key == 'y' || (key == 'z' && e.shiftKey)) { e.preventDefault(); this.onclickRedo(); }
+		}.bind(this));
+		
 		SIMCONSTS.defaults = {};
 		for (let key in this.settings) {
 			if (['mechanics','showAdvanced'].includes(key)) continue;
@@ -297,6 +319,8 @@ var UI_MAIN = Vue.createApp({
 				}
 				if (this.autoBonus && this.autoBonus.type == 'dewy') this.showOutdated = true;
 				COMMON.global.fleetEditorToggleOutdated(this.showOutdated);
+				
+				this._initUndoStack();
 			}.bind(this);
 			if (window.location.hash.length >= 3) {
 				if (window.location.hash.substr(0,8) == '#backup=') {
@@ -385,6 +409,12 @@ var UI_MAIN = Vue.createApp({
 		});
 	},
 	computed: {
+		canUndo: function() {
+			return this.undoStack.length > 1 || (this.undoStack.length == 1 && this.undoStack[0] != this._undoSnapshotNow());
+		},
+		canRedo: function() {
+			return this.redoStack.length > 0;
+		},
 		simSlotCompareCols: function() {
 			return this.simSlots.map((slot,ind) => ({ ind: ind, name: this.simSlotName(ind), summary: slot.summary })).filter(c => c.summary);
 		},
@@ -616,6 +646,9 @@ var UI_MAIN = Vue.createApp({
 		simSlotName: function(ind) {
 			return String.fromCharCode(65+ind);
 		},
+		toggleSection: function(key) {
+			this.sectionsOpen[key] = !this.sectionsOpen[key];
+		},
 		_snapshotSlotSave: function() {
 			let save = CONVERT.uiToSave(this);
 			let filtered = { version: save.version };
@@ -640,6 +673,8 @@ var UI_MAIN = Vue.createApp({
 			let slot = this.simSlots[this.simSlotActive];
 			slot.save = this._snapshotSlotSave();
 			slot.results = this.results.active ? JSON.parse(JSON.stringify(this.results)) : null;
+			slot.undoStack = this.undoStack;
+			slot.redoStack = this.redoStack;
 		},
 		_captureSlotSummary: function() {
 			let r = this.results;
@@ -660,6 +695,7 @@ var UI_MAIN = Vue.createApp({
 		},
 		onclickSimSlot: function(ind) {
 			if (ind == this.simSlotActive || !this.canSim) return;
+			this._undoApplying = true;
 			this._saveActiveSlot();
 			let prevSave = this.simSlots[this.simSlotActive].save;
 			let slot = this.simSlots[ind];
@@ -677,6 +713,9 @@ var UI_MAIN = Vue.createApp({
 				this.results.errors = [];
 				this.results.warnings = [];
 			}
+			this.undoStack = slot.undoStack || [this._undoSnapshotNow()];
+			this.redoStack = slot.redoStack || [];
+			this.$nextTick(() => { this._undoApplying = false; });
 		},
 		_loadSlotsFromStorage: function() {
 			try {
@@ -700,6 +739,55 @@ var UI_MAIN = Vue.createApp({
 			} catch(e) {
 				console.error(e);
 			}
+		},
+		
+		// undo/redo: watches ship/equipment/fleet/enemy-comp/settings edits (deep) and, after the
+		// user pauses typing/clicking for a moment, snapshots the relevant state onto a stack
+		_initUndoStack: function() {
+			this.undoStack = [this._undoSnapshotNow()];
+			this.redoStack = [];
+			this.$watch(
+				() => UNDO_WATCH_KEYS.map(key => this[key]),
+				() => {
+					if (this._undoApplying) return;
+					clearTimeout(this._undoTimer);
+					this._undoTimer = setTimeout(() => this._captureUndoSnapshot(), UNDO_DEBOUNCE_MS);
+				},
+				{ deep: true }
+			);
+		},
+		_undoSnapshotNow: function() {
+			let save = CONVERT.uiToSave(this);
+			let filtered = { version: save.version };
+			for (let key of UNDO_WATCH_KEYS) filtered[key] = save[key];
+			return JSON.stringify(filtered);
+		},
+		_captureUndoSnapshot: function() {
+			let snap = this._undoSnapshotNow();
+			if (snap == this.undoStack[this.undoStack.length-1]) return; // no real change
+			this.undoStack.push(snap);
+			if (this.undoStack.length > UNDO_MAX) this.undoStack.shift();
+			this.redoStack = [];
+		},
+		_applyUndoSnapshot: function(snap) {
+			this._undoApplying = true;
+			this._resetPlayerSide();
+			CONVERT.loadSave(JSON.parse(snap),this);
+			SIM.resetStats();
+			this.$nextTick(() => { this._undoApplying = false; });
+		},
+		onclickUndo: function() {
+			clearTimeout(this._undoTimer);
+			this._captureUndoSnapshot(); // capture whatever's in-progress first, so redo can get back to it
+			if (this.undoStack.length < 2) return;
+			this.redoStack.push(this.undoStack.pop());
+			this._applyUndoSnapshot(this.undoStack[this.undoStack.length-1]);
+		},
+		onclickRedo: function() {
+			if (!this.redoStack.length) return;
+			let snap = this.redoStack.pop();
+			this.undoStack.push(snap);
+			this._applyUndoSnapshot(snap);
 		},
 		
 		updateResults: function(resultSim) {
@@ -1672,6 +1760,27 @@ var UI_KCNAVCOMPIMPORTER = Vue.createApp({
 			this.optionsWorld.push({ id: +id, name: MAPDATA[id].name.replace('Event ','') });
 		}
 	},
+	computed: {
+		// a clickable minimap, when we happen to have node-coordinate art for this exact map
+		// (currently the 33 regular world maps 1-1..7-2); purely a shortcut for filling in
+		// world/mapnum/edges below, the actual data always comes live from KCNav on submit
+		mapPickerData: function() {
+			if (!this.world || !this.mapnum) return null;
+			let m = this.world + '-' + this.mapnum;
+			let nodeCoords = MAP_NODES[m];
+			if (!nodeCoords) return null;
+			let markers = Object.keys(nodeCoords).map(letter => {
+				let opt = this.optionsLetter.find(o => o.letter == letter);
+				return {
+					letter: letter,
+					xPct: Math.round(1000*nodeCoords[letter][0]/1200)/10,
+					yPct: Math.round(1000*nodeCoords[letter][1]/720)/10,
+					edges: opt ? opt.edges : null,
+				};
+			});
+			return { img: 'assets/maps/m'+this.world+this.mapnum+'.png', markers: markers };
+		},
+	},
 	methods: {
 		doOpen: function(compUI,isFriendFleet) {
 			this.active = true;
@@ -1708,6 +1817,10 @@ var UI_KCNAVCOMPIMPORTER = Vue.createApp({
 				this.edges = this.selectLetter;
 			}
 			this.selectLetter = 0;
+		},
+		onclickMapNode: function(marker) {
+			if (!marker.edges) return;
+			this.edges = marker.edges;
 		},
 		
 		onclickLoad: function() {
@@ -2175,7 +2288,7 @@ var UI_BACKUP = Vue.createApp({
 		
 		_shareTinyURL: function(strSim) {
 			// let url = window.location.href.split(/[?#]/)[0] + '#backup=' + strSim;
-			let url = 'https://kc3kai.github.io/kancolle-replay/simulator.html' + '#backup=' + strSim;
+			let url = window.location.origin + window.location.pathname.replace(/[^/]*$/,'') + '#backup=' + strSim;
 			fetch('https://tinyurl.com/api-create.php?url=' + encodeURIComponent(url)).then(async(res) => {
 				let txt = await res.text();
 				console.log(txt);
@@ -2209,7 +2322,7 @@ var UI_BACKUP = Vue.createApp({
 					return;
 				}
 				let data = JSON.parse(txt);
-				let url = 'https://kc3kai.github.io/kancolle-replay/?s=' + data.id;
+				let url = window.location.origin + window.location.pathname.replace(/[^/]*$/,'') + '?s=' + data.id;
 				navigator.clipboard.writeText(url);
 				console.log(url);
 				this.shareURL = url;
