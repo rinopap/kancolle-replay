@@ -56,6 +56,10 @@ var MECHANICS_LIST = [
 // enemy battles and settings are shared across slots so slots can be compared on equal terms
 var SIM_SLOT_COUNT = 3;
 var SIM_SLOT_PLAYER_KEYS = ['fleetFMain','fleetFSupportN','fleetFSupportB','fleetsFFriend','useSupportN','useSupportB','useFF','landBases'];
+// each slot can also hold its OWN enemy fleet (battles); by default slots B/C stay "synced"
+// to slot A's enemy fleet (enemySync: true) for comparing friendly setups against the same
+// enemy, but can be switched to an independent enemy fleet of their own (enemySync: false)
+var SIM_SLOT_SAVE_KEYS = SIM_SLOT_PLAYER_KEYS.concat(['battles']);
 var SIM_SLOT_STORAGE_KEY = 'sim2_slots';
 
 var UNDO_MAX = 50;
@@ -73,7 +77,7 @@ var UI_MAIN = Vue.createApp({
 		fleetFSupportN: FLEET_MODEL.getBlankFleet({ isSupport: 1 }),
 		fleetFSupportB: FLEET_MODEL.getBlankFleet({ isSupport: 1 }),
 		fleetsFFriend: [],
-		simSlots: Array.from({length:SIM_SLOT_COUNT},() => ({ save: null, results: null, summary: null, undoStack: null, redoStack: null })),
+		simSlots: Array.from({length:SIM_SLOT_COUNT},(_,ind) => ({ save: null, results: null, summary: null, undoStack: null, redoStack: null, enemySync: ind != 0 })),
 		simSlotActive: 0,
 		showChangeLog: false,
 		undoStack: [],
@@ -649,13 +653,42 @@ var UI_MAIN = Vue.createApp({
 		toggleSection: function(key) {
 			this.sectionsOpen[key] = !this.sectionsOpen[key];
 		},
+		onchangeEnemySync: function(ind) {
+			if (ind != this.simSlotActive || ind == 0) return;
+			let slot = this.simSlots[ind];
+			if (!slot.enemySync) return; // turning off: whatever's currently shown just becomes this slot's own baseline
+			this._saveActiveSlot(); // make sure A's latest edits are captured if we're somehow mid-edit of A... (no-op here since ind!=0)
+			if (!this.simSlots[0].save) return; // slot A has no data yet to sync from
+			this._undoApplying = true;
+			this._resetBattlesToOne();
+			CONVERT.loadSave({ battles: JSON.parse(JSON.stringify(this.simSlots[0].save.battles)) },this);
+			this.$nextTick(() => { this._undoApplying = false; });
+		},
+		onclickClearSimSlotCompare: function() {
+			for (let slot of this.simSlots) slot.summary = null;
+			this._saveSlotsToStorage();
+		},
 		_snapshotSlotSave: function() {
 			let save = CONVERT.uiToSave(this);
 			let filtered = { version: save.version };
-			for (let key of SIM_SLOT_PLAYER_KEYS) {
+			for (let key of SIM_SLOT_SAVE_KEYS) {
 				if (save[key] !== undefined) filtered[key] = save[key];
 			}
 			return JSON.parse(JSON.stringify(filtered));
+		},
+		_resetBattlesToOne: function() {
+			while (this.battles.length > 1) this.deleteBattle(0,null);
+			let b = this.battles[0];
+			b.formation = this.fleetFMain.combined ? CONST.formationCombinedDefault : CONST.formationSingleDefault;
+			b.nodeType = CONST.NODE_NORMAL;
+			b.doNB = false; b.doNBCond = '';
+			b.lbasWaves = [false,false,false,false,false,false];
+			b.addCostFuel = null; b.addCostAmmo = null; b.addCostMax = null;
+			b.subOnly = false; b.useNormalSupport = 0;
+			b.useBalloon = false; b.useAtoll = false; b.useSmoke = false; b.useAnchorageRepair = false;
+			b.offrouteRate = 0; b.forceEngagement = 0;
+			b.enemyComps = [];
+			this.addNewComp(b.enemyComps,{ isEnemy: 1 });
 		},
 		_resetPlayerSide: function() {
 			COMMON.global.fleetEditorMoveTemp();
@@ -703,7 +736,13 @@ var UI_MAIN = Vue.createApp({
 			// a slot opened for the first time starts as a copy of the slot we came from
 			if (!slot.save) slot.save = JSON.parse(JSON.stringify(prevSave));
 			this._resetPlayerSide();
-			CONVERT.loadSave(JSON.parse(JSON.stringify(slot.save)),this);
+			this._resetBattlesToOne();
+			let loadData = JSON.parse(JSON.stringify(slot.save));
+			if (ind != 0 && slot.enemySync && this.simSlots[0].save) {
+				// synced to slot A: always pull A's current enemy fleet rather than this slot's own
+				loadData.battles = JSON.parse(JSON.stringify(this.simSlots[0].save.battles));
+			}
+			CONVERT.loadSave(loadData,this);
 			// stats accumulated in SIM belong to the previous slot's input; force a fresh run next time
 			SIM.resetStats();
 			if (slot.results) {
@@ -724,7 +763,7 @@ var UI_MAIN = Vue.createApp({
 				for (let i=0; i<SIM_SLOT_COUNT; i++) {
 					let s = data.slots[i];
 					if (!s) continue;
-					this.simSlots[i] = { save: s.save || null, results: null, summary: s.summary || null };
+					this.simSlots[i] = { save: s.save || null, results: null, summary: s.summary || null, enemySync: s.enemySync !== undefined ? s.enemySync : (i != 0) };
 				}
 				if (data.active >= 0 && data.active < SIM_SLOT_COUNT) this.simSlotActive = data.active;
 			} catch(e) {
@@ -734,7 +773,7 @@ var UI_MAIN = Vue.createApp({
 		_saveSlotsToStorage: function() {
 			try {
 				this._saveActiveSlot();
-				let slots = this.simSlots.map(s => ({ save: s.save, summary: s.summary }));
+				let slots = this.simSlots.map(s => ({ save: s.save, summary: s.summary, enemySync: s.enemySync }));
 				localStorage[SIM_SLOT_STORAGE_KEY] = JSON.stringify({ active: this.simSlotActive, slots: slots });
 			} catch(e) {
 				console.error(e);
@@ -771,10 +810,31 @@ var UI_MAIN = Vue.createApp({
 		},
 		_applyUndoSnapshot: function(snap) {
 			this._undoApplying = true;
+			// _resetPlayerSide() replaces fleetFMain/etc with brand new objects, and (via
+			// fleetEditorMoveTemp) closes the fleet-editor modal as a side effect if it's open;
+			// remember what it was pointed at so we can reopen it on the restored fleet after
+			let reopenKey = null, reopenFriendIndex = -1, reopenFleet = null;
+			let openFleet = COMMON.global.fleetEditorGetOpenFleet();
+			if (openFleet) {
+				let f = openFleet;
+				if (f === this.fleetFMain) reopenKey = 'fleetFMain';
+				else if (f === this.fleetFSupportN) reopenKey = 'fleetFSupportN';
+				else if (f === this.fleetFSupportB) reopenKey = 'fleetFSupportB';
+				else {
+					let idx = this.fleetsFFriend.findIndex(c => c.fleet === f);
+					if (idx >= 0) reopenFriendIndex = idx;
+					else reopenFleet = f; // untouched by undo (e.g. an enemy fleet); reference stays valid
+				}
+			}
 			this._resetPlayerSide();
 			CONVERT.loadSave(JSON.parse(snap),this);
 			SIM.resetStats();
-			this.$nextTick(() => { this._undoApplying = false; });
+			this.$nextTick(() => {
+				this._undoApplying = false;
+				if (reopenKey) COMMON.global.fleetEditorOpen(this[reopenKey]);
+				else if (reopenFriendIndex >= 0 && this.fleetsFFriend[reopenFriendIndex]) COMMON.global.fleetEditorOpen(this.fleetsFFriend[reopenFriendIndex].fleet);
+				else if (reopenFleet) COMMON.global.fleetEditorOpen(reopenFleet);
+			});
 		},
 		onclickUndo: function() {
 			clearTimeout(this._undoTimer);
@@ -2832,7 +2892,7 @@ var UI_TIMESTATSINFO = Vue.createApp({
 
 var UI_OTHER = Vue.createApp({
 	data: () => ({
-		
+		showChangeLog: false,
 	})
 }).use(COMMON.i18n).mount('#divOther');
 

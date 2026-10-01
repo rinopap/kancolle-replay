@@ -398,7 +398,6 @@ var UI_FLEETEDITOR = Vue.createApp({
 		presetListArea: [],
 		presetListNode: [],
 		presetListComp: [],
-		showPresetMap: false,
 		
 		fleet: FLEET_MODEL.getBlankFleet(),
 		
@@ -423,22 +422,6 @@ var UI_FLEETEDITOR = Vue.createApp({
 		}
 	},
 	computed: {
-		presetMapData: function() {
-			if (!this.loadPresetArea) return null;
-			let [w,m] = this.loadPresetArea.split('|');
-			let nodeCoords = MAP_NODES[m];
-			if (!nodeCoords) return null; // no map layout data for this map (e.g. event maps)
-			let [worldNum,mapNum] = m.split('-');
-			// coordinates are in the standard 1200x720 KanColle game-canvas space; expressed
-			// as percentages so the overlay lines up regardless of the displayed image size
-			let markers = Object.keys(nodeCoords).map(letter => ({
-				letter: letter,
-				xPct: Math.round(1000*nodeCoords[letter][0]/1200)/10,
-				yPct: Math.round(1000*nodeCoords[letter][1]/720)/10,
-				hasData: !!this.presetListNode.find(o => o.value == letter),
-			}));
-			return { img: 'assets/maps/m'+worldNum+mapNum+'.png', markers: markers };
-		},
 		numShipShow: function() {
 			return this.fleet.type == CONST.SF ? CONST.numShipSF : CONST.numShipNormal;
 		},
@@ -764,11 +747,6 @@ var UI_FLEETEDITOR = Vue.createApp({
 				});
 			}
 			this.loadPresetNode = this.presetListNode[0].value;
-			this.onchangePresetNode();
-		},
-		onclickPresetMapNode: function(marker) {
-			if (!marker.hasData) return;
-			this.loadPresetNode = marker.letter;
 			this.onchangePresetNode();
 		},
 		onchangePresetNode: function() {
@@ -1476,6 +1454,9 @@ var UI_SHELLORDER = Vue.createApp({
 
 COMMON.global.fleetEditorOpen = function(fleet) {
 	UI_FLEETEDITOR.doOpen(fleet);
+}
+COMMON.global.fleetEditorGetOpenFleet = function() {
+	return UI_FLEETEDITOR.active ? UI_FLEETEDITOR.fleet : null;
 }
 COMMON.global.fleetEditorClose = function() {
 	UI_FLEETEDITOR.doClose();
