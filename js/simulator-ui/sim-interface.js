@@ -919,7 +919,10 @@ var SIM = {
 	
 		let includeResults = !dataReplay || dataInput.includeTimeStats;
 	
-		for (let battleInd=0; battleInd<dataInput.nodes.length; battleInd++) {
+		let battleInd = 0;
+		let _branchSafety = 0;
+		while (battleInd<dataInput.nodes.length) {
+			if (++_branchSafety > 50) break; // guard against a misconfigured branch looping back on itself
 			let node = dataInput.nodes[battleInd];
 			if (node.offrouteRate && Math.random() < node.offrouteRate) {
 				break;
@@ -1087,6 +1090,20 @@ var SIM = {
 			
 			for (let ship of shipsAll) delete ship._tempFCF;
 			if (isRetreat) break;
+			
+			// route branching: with no branches configured this always just continues to
+			// battleInd+1 (identical to the old fixed for-loop); the final node in dataInput.nodes
+			// is always the boss/destination for every possible resolved path, so isBossNode and
+			// the end-of-sortie checks elsewhere (battleNum == dataInput.nodes.length) still hold
+			let nextInd = battleInd+1;
+			if (node.branches && node.branches.length) {
+				let roll = Math.random()*100, cum = 0;
+				for (let br of node.branches) {
+					cum += br.rate;
+					if (roll < cum) { nextInd = br.targetInd; break; }
+				}
+			}
+			battleInd = nextInd;
 		}
 		
 		if (includeResults) {

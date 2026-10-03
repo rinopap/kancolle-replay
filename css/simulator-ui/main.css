@@ -786,3 +786,16 @@ div.scrollAnchor > div {
 	vertical-align: middle;
 	margin: 0 2px 0 0;
 }
+
+.divBranches .branchRow {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin: 2px 0;
+}
+.divBranches select {
+	max-width: 140px;
+}
+.divBranches input[type="number"] {
+	width: 50px;
+}

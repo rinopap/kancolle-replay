@@ -888,6 +888,11 @@ window.CONVERT = {
 				useAnchorageRepair: battleUI.useAnchorageRepair,
 				offrouteRate: battleUI.offrouteRate/100,
 			};
+			if (battleUI.branches && battleUI.branches.length) {
+				nodeInput.branches = battleUI.branches
+					.filter(br => nodeIdToNum[br.targetId])
+					.map(br => ({ targetInd: nodeIdToNum[br.targetId]-1, rate: +br.rate || 0 }));
+			}
 			if (battleUI.doNBCond) nodeInput.doNBCond = battleUI.doNBCond;
 			if (+battleUI.forceEngagement) nodeInput.forceEngagement = +battleUI.forceEngagement;
 			if (battleUI.formationUseLAIfNoSpAttack && COMMON.checkSpecialAttackUI(this._UI_MAIN,+battleUI.formation)) nodeInput.formationUseLAIfNoSpAttack = true;

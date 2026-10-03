@@ -899,6 +899,20 @@
 					<div class="space">
 						<label><span class="header">{{$t('offroute_before_battle')}}: </span><input type="number" min="0" max="100" v-model.number="battle.offrouteRate" :class="{changed:!!battle.offrouteRate}"/>%</label>
 					</div>
+					<div class="space divBranches" v-show="candelete">
+						<div><span class="header" :title="$t('branches_tooltip')">{{$t('branches')}}:</span></div>
+						<div v-for="(br,ind) in battle.branches" class="branchRow">
+							<select v-model="br.targetId">
+								<option v-for="o in branchTargetOptions()" :value="o.id">{{o.label}}</option>
+							</select>
+							<input type="number" min="0" max="100" v-model.number="br.rate"/>%
+							<a href="#" @click.prevent="deleteBranch(ind)">&#10006;</a>
+						</div>
+						<div>
+							<a href="#" v-show="battle.branches.length < 4" @click.prevent="addBranch()">+ {{$t('add_branch')}}</a>
+							<span class="note" v-show="battle.branches.length"> {{$t('branch_remainder',[100-branchRateTotal()])}}</span>
+						</div>
+					</div>
 				</div>
 				<div>
 					<div><span class="header">{{$t('resupply_cost')}}:</span></div>

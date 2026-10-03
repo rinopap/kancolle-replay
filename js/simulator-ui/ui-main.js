@@ -614,6 +614,7 @@ var UI_MAIN = Vue.createApp({
 				useAnchorageRepair: false,
 				offrouteRate: 0,
 				forceEngagement: 0,
+				branches: [],
 					
 				enemyComps: [],
 			};
@@ -630,8 +631,13 @@ var UI_MAIN = Vue.createApp({
 				this.battles[i].ind--;
 			}
 			if (this.settingsFCF.dameconNode == this.battles[indAt].id) this.settingsFCF.dameconNode = 0;
+			let deletedId = this.battles[indAt].id;
 			this.battles.splice(indAt,1);
+			for (let b of this.battles) {
+				if (b.branches && b.branches.length) b.branches = b.branches.filter(br => br.targetId != deletedId);
+			}
 		},
+
 		addNewComp: function(comps,args) {
 			if (comps.length >= CONST.numCompMax) return;
 			let comp = {
@@ -687,6 +693,7 @@ var UI_MAIN = Vue.createApp({
 			b.subOnly = false; b.useNormalSupport = 0;
 			b.useBalloon = false; b.useAtoll = false; b.useSmoke = false; b.useAnchorageRepair = false;
 			b.offrouteRate = 0; b.forceEngagement = 0;
+			b.branches = [];
 			b.enemyComps = [];
 			this.addNewComp(b.enemyComps,{ isEnemy: 1 });
 		},
@@ -1587,6 +1594,21 @@ ${t('results.buckets')}:	${this.resultsBucketTPPer}`;
 		
 		onchangeLbasWaves: function(ind) {
 			COMMON.BONUS_MANAGER.applyAutoLBAS(ind);
+		},
+		
+		addBranch: function() {
+			if (this.battle.branches.length >= 4) return;
+			let others = UI_MAIN.battles.filter(b => b.id != this.battle.id);
+			this.battle.branches.push({ targetId: others.length ? others[0].id : this.battle.id, rate: 0 });
+		},
+		deleteBranch: function(ind) {
+			this.battle.branches.splice(ind,1);
+		},
+		branchTargetOptions: function() {
+			return UI_MAIN.battles.filter(b => b.id != this.battle.id).map(b => ({ id: b.id, label: this.$t('node_n',[UI_MAIN.battles.indexOf(b)+1]) }));
+		},
+		branchRateTotal: function() {
+			return this.battle.branches.reduce((a,br) => a+(+br.rate||0),0);
 		},
 	},
 	watch: {
