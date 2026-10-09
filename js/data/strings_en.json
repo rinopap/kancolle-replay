@@ -510,6 +510,7 @@
 	"route_pick_target": "Click the destination node...",
 	"route_select_node": "Select a node in the diagram to edit its branches.",
 	"route_clear_all": "Remove all branches",
+	"start_node": "Start",
 	"from_preset": "From preset",
 	"clear_all": "Clear All",
 	"export_deckbuilder": "Export DeckBuilder",

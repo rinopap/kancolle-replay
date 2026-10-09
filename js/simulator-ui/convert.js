@@ -855,6 +855,7 @@ window.CONVERT = {
 			lbas: this.uiToSimInputLBAS(dataUI.landBases),
 			fleetFriendComps: dataUI.useFF ? this.uiToSimInputComps(dataUI.fleetsFFriend) : null,
 			nodes: [],
+			startBranches: (dataUI.startBranches || []).filter(br => nodeIdToNum[br.targetId]).map(br => ({ targetInd: nodeIdToNum[br.targetId]-1, rate: +br.rate || 0 })),
 			continueOnTaiha: !dataUI.settings.retreatOnTaiha,
 			dameconNumTaiha: dataUI.settings.dameconNumTaiha,
 			retreatOnChuuhaIfAll: dataUI.settings.retreatOnChuuhaIfAll,
@@ -1056,6 +1057,8 @@ window.CONVERT = {
 			dataSave.battles.push(battleSave);
 		}
 		
+		dataSave.startBranches = JSON.parse(JSON.stringify(dataUI.startBranches || []));
+		
 		dataSave.settings = this.uiToSaveSettings(dataUI.settings);
 		dataSave.settingsFCF = this._copyObj(dataUI.settingsFCF);
 		if (dataUI.autoBonus) dataSave.autoBonus = this._copyObj(dataUI.autoBonus);
@@ -1192,6 +1195,7 @@ window.CONVERT = {
 		}
 		
 		if (dataSave.battles) {
+			dataUI.startBranches = JSON.parse(JSON.stringify(dataSave.startBranches || []));
 			let idMax = 0, idMin = Number.MAX_SAFE_INTEGER;
 			for (let i=dataUI.battles.length; i<dataSave.battles.length; i++) {
 				this._UI_MAIN.addNewBattle();

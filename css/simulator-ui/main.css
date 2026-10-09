@@ -821,3 +821,4 @@ div.scrollAnchor > div {
 .routeNode .routeNodeName { font-size: 14px; font-weight: bold; }
 .routeNode .routeNodeVisit { font-size: 11px; fill: #777; }
 .routePanel { margin: 6px 0; }
+.routeNode.start rect { fill: #E8F6E8; stroke: #44AA55; }

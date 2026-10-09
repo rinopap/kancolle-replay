@@ -171,10 +171,10 @@
 							<path :d="e.path" fill="none" :marker-end="e.sel ? 'url(#routeArrowSel)' : 'url(#routeArrow)'"/>
 							<text :x="e.lx" :y="e.ly" text-anchor="middle">{{e.rate}}%</text>
 						</g>
-						<g v-for="n in routeNodes" :key="n.id" class="routeNode" :class="{sel:n.id==routeSelected,target:routeAdding&&n.id!=routeSelected,boss:n.ind==battles.length-1}" @click="onclickRouteNode(n)">
+						<g v-for="n in routeNodes" :key="n.id" class="routeNode" :class="{sel:n.id==routeSelected,target:routeAdding&&n.id!=routeSelected&&n.id!='start',boss:n.ind==battles.length-1,start:n.ind==-1}" @click="onclickRouteNode(n)">
 							<rect :x="n.x-32" :y="n.y-22" width="64" height="44" rx="8"/>
-							<text :x="n.x" :y="n.y-3" text-anchor="middle" class="routeNodeName">{{n.ind==battles.length-1 ? 'Boss' : n.ind+1}}</text>
-							<text :x="n.x" :y="n.y+14" text-anchor="middle" class="routeNodeVisit">{{routePct(routeVisits[n.ind])}}%</text>
+							<text :x="n.x" :y="n.y-3" text-anchor="middle" class="routeNodeName">{{n.ind==-1 ? 'Start' : (n.ind==battles.length-1 ? 'Boss' : n.ind+1)}}</text>
+							<text :x="n.x" :y="n.y+14" text-anchor="middle" class="routeNodeVisit">{{routePct(routeVisits[n.ind+1])}}%</text>
 						</g>
 					</svg>
 				</div>

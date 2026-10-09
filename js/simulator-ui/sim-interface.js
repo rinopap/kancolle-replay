@@ -920,6 +920,14 @@ var SIM = {
 		let includeResults = !dataReplay || dataInput.includeTimeStats;
 	
 		let battleInd = 0;
+		if (dataInput.startBranches && dataInput.startBranches.length) {
+			// branch right from the start node: the sortie may begin at a node other than the first
+			let roll = Math.random()*100, cum = 0;
+			for (let br of dataInput.startBranches) {
+				cum += br.rate;
+				if (roll < cum) { battleInd = br.targetInd; break; }
+			}
+		}
 		let _branchSafety = 0;
 		while (battleInd<dataInput.nodes.length) {
 			if (++_branchSafety > 50) break; // guard against a misconfigured branch looping back on itself

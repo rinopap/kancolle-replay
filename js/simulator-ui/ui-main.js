@@ -59,7 +59,7 @@ var SIM_SLOT_PLAYER_KEYS = ['fleetFMain','fleetFSupportN','fleetFSupportB','flee
 // each slot can also hold its OWN enemy fleet (battles); by default slots B/C stay "synced"
 // to slot A's enemy fleet (enemySync: true) for comparing friendly setups against the same
 // enemy, but can be switched to an independent enemy fleet of their own (enemySync: false)
-var SIM_SLOT_SAVE_KEYS = SIM_SLOT_PLAYER_KEYS.concat(['battles']);
+var SIM_SLOT_SAVE_KEYS = SIM_SLOT_PLAYER_KEYS.concat(['battles','startBranches']);
 var SIM_SLOT_STORAGE_KEY = 'sim2_slots';
 
 var UNDO_MAX = 50;
@@ -82,7 +82,8 @@ var UI_MAIN = Vue.createApp({
 		showChangeLog: false,
 		undoStack: [],
 		redoStack: [],
-		routeSelected: 0,
+		startBranches: [],
+	routeSelected: 0,
 	routeAdding: false,
 	sectionsOpen: { player: true, battles: true, route: true, settings: true, simulate: true, compare: true, results: true },
 		_undoTimer: null,
@@ -464,20 +465,29 @@ var UI_MAIN = Vue.createApp({
 		},
 		// ---- route diagram (flowchart) ----
 		routeSize: function() {
-			return { w: Math.max(this.battles.length*110+20, 300), h: 260 };
+			return { w: Math.max((this.battles.length+1)*110+20, 300), h: 260 };
 		},
+		// layout index 0 = Start (virtual), 1.. = battles in order
 		routeNodes: function() {
-			return this.battles.map((b,i) => ({ id: b.id, ind: i, x: 70+i*110, y: 130 }));
+			let nodes = [{ id: 'start', ind: -1, x: 70, y: 130 }];
+			this.battles.forEach((b,i) => nodes.push({ id: b.id, ind: i, x: 70+(i+1)*110, y: 130 }));
+			return nodes;
+		},
+		routeSources: function() {
+			let src = [{ id: 'start', branches: this.startBranches }];
+			for (let b of this.battles) src.push({ id: b.id, branches: b.branches || [] });
+			return src;
 		},
 		routeVisits: function() {
-			// expected visits per node (fraction of runs), propagated through branch rolls
-			let n = this.battles.length, visits = new Array(n).fill(0);
+			// expected visits per layout node (fraction of runs); index 0 = Start
+			let src = this.routeSources, n = src.length, visits = new Array(n).fill(0);
+			let idx = id => src.findIndex((x,i) => i > 0 && x.id == id);
 			for (let pass=0; pass<60; pass++) {
 				let next = new Array(n).fill(0); next[0] = 1;
 				for (let i=0; i<n; i++) {
-					let rest = visits[i], used = 0;
-					for (let br of this.battles[i].branches || []) {
-						let t = this.battles.findIndex(b => b.id == br.targetId);
+					let used = 0;
+					for (let br of src[i].branches) {
+						let t = idx(br.targetId);
 						let r = Math.max(0,Math.min(100,+br.rate||0))/100;
 						if (t < 0) continue;
 						used += r;
@@ -490,29 +500,29 @@ var UI_MAIN = Vue.createApp({
 			return visits;
 		},
 		routeEdges: function() {
-			let edges = [], n = this.battles.length;
+			let src = this.routeSources, n = src.length, nodes = this.routeNodes, edges = [];
+			let idx = id => src.findIndex((x,i) => i > 0 && x.id == id);
 			for (let i=0; i<n; i++) {
-				let used = 0, brs = this.battles[i].branches || [];
-				brs.forEach((br,bi) => {
-					let t = this.battles.findIndex(b => b.id == br.targetId);
+				let used = 0;
+				src[i].branches.forEach((br,bi) => {
+					let t = idx(br.targetId);
 					if (t < 0) return;
 					used += Math.max(0,+br.rate||0);
 					edges.push({ key: i+'b'+bi, from: i, to: t, bi: bi, rate: +br.rate||0, branch: true });
 				});
 				if (i < n-1) edges.push({ key: i+'n', from: i, to: i+1, rate: Math.max(0,100-used), branch: false });
 			}
-			let nodes = this.routeNodes;
 			return edges.map(e => {
 				let x1 = nodes[e.from].x, x2 = nodes[e.to].x, fwd = e.to > e.from;
 				let span = Math.abs(e.to-e.from);
 				let straight = !e.branch && span == 1;
 				let sy = nodes[e.from].y + (straight ? 0 : (fwd ? -22 : 22));
 				let ey = nodes[e.to].y + (straight ? 0 : (fwd ? -22 : 22));
-				if (straight) { x1 += 30; x2 -= 34; }
+				if (straight) { x1 += 34; x2 -= 36; }
 				let h = 30 + span*18, cy = sy + (fwd ? -h : h);
 				e.path = straight ? `M${x1},${sy} L${x2},${ey}` : `M${x1},${sy} Q${(x1+x2)/2},${cy} ${x2},${ey}`;
 				e.lx = (x1+x2)/2; e.ly = straight ? sy-6 : (sy+cy)/2 + (fwd ? -2 : 10);
-				e.sel = this.routeSelected == this.battles[e.from].id;
+				e.sel = this.routeSelected == nodes[e.from].id;
 				return e;
 			});
 		},
@@ -689,6 +699,8 @@ var UI_MAIN = Vue.createApp({
 			if (this.settingsFCF.dameconNode == this.battles[indAt].id) this.settingsFCF.dameconNode = 0;
 			let deletedId = this.battles[indAt].id;
 			this.battles.splice(indAt,1);
+			if (this.routeSelected == deletedId) this.routeSelected = 0;
+			this.startBranches = this.startBranches.filter(br => br.targetId != deletedId);
 			for (let b of this.battles) {
 				if (b.branches && b.branches.length) b.branches = b.branches.filter(br => br.targetId != deletedId);
 			}
@@ -716,10 +728,12 @@ var UI_MAIN = Vue.createApp({
 			this.sectionsOpen[key] = !this.sectionsOpen[key];
 		},
 		routeSelBattle: function() {
+			if (this.routeSelected == 'start') return { id: 'start', branches: this.startBranches };
 			return this.battles.find(b => b.id == this.routeSelected) || null;
 		},
 		onclickRouteNode: function(node) {
 			let sel = this.routeSelBattle();
+			if (this.routeAdding && node.id == 'start') return;
 			if (this.routeAdding && sel && node.id != sel.id) {
 				if (sel.branches.length < 4 && !sel.branches.find(br => br.targetId == node.id)) {
 					let used = sel.branches.reduce((a,br) => a+(+br.rate||0),0);
@@ -739,10 +753,12 @@ var UI_MAIN = Vue.createApp({
 			if (sel) sel.branches.splice(bi,1);
 		},
 		onclickRouteClear: function() {
+			this.startBranches = [];
 			for (let b of this.battles) b.branches = [];
 			this.routeAdding = false;
 		},
 		routeNodeLabel: function(id) {
+			if (id == 'start') return this.$t('start_node');
 			return this.$t('node_n',[this.battles.findIndex(b => b.id == id)+1]);
 		},
 		routePct: function(v) {
@@ -773,6 +789,7 @@ var UI_MAIN = Vue.createApp({
 		},
 		_resetBattlesToOne: function() {
 			while (this.battles.length > 1) this.deleteBattle(0,null);
+			this.startBranches = [];
 			let b = this.battles[0];
 			b.formation = this.fleetFMain.combined ? CONST.formationCombinedDefault : CONST.formationSingleDefault;
 			b.nodeType = CONST.NODE_NORMAL;
