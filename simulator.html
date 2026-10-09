@@ -156,6 +156,48 @@
 		</div>
 		
 		<hr>
+		<div class="scrollAnchor"><div ref="divRouteScroll"></div></div>
+		<div id="divRoute">
+			<h2 class="toggleHeader" @click="toggleSection('route')">{{$t('route_diagram')}} <span class="toggleArrow">{{sectionsOpen.route ? '&#9660;' : '&#9654;'}}</span></h2>
+			<div v-show="sectionsOpen.route">
+				<div class="note">{{$t('route_diagram_help')}}</div>
+				<div class="routeScroll">
+					<svg :width="routeSize.w" :height="routeSize.h" :viewBox="'0 0 '+routeSize.w+' '+routeSize.h" class="routeSvg">
+						<defs>
+							<marker id="routeArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#557799"/></marker>
+							<marker id="routeArrowSel" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#DD6600"/></marker>
+						</defs>
+						<g v-for="e in routeEdges" :key="e.key" class="routeEdge" :class="{branch:e.branch,sel:e.sel}">
+							<path :d="e.path" fill="none" :marker-end="e.sel ? 'url(#routeArrowSel)' : 'url(#routeArrow)'"/>
+							<text :x="e.lx" :y="e.ly" text-anchor="middle">{{e.rate}}%</text>
+						</g>
+						<g v-for="n in routeNodes" :key="n.id" class="routeNode" :class="{sel:n.id==routeSelected,target:routeAdding&&n.id!=routeSelected,boss:n.ind==battles.length-1}" @click="onclickRouteNode(n)">
+							<rect :x="n.x-32" :y="n.y-22" width="64" height="44" rx="8"/>
+							<text :x="n.x" :y="n.y-3" text-anchor="middle" class="routeNodeName">{{n.ind==battles.length-1 ? 'Boss' : n.ind+1}}</text>
+							<text :x="n.x" :y="n.y+14" text-anchor="middle" class="routeNodeVisit">{{routePct(routeVisits[n.ind])}}%</text>
+						</g>
+					</svg>
+				</div>
+				<div class="routePanel" v-if="routeSelBattle()">
+					<div><span class="header">{{routeNodeLabel(routeSelBattle().id)}}</span></div>
+					<div v-for="(br,bi) in routeSelBattle().branches" class="branchRow">
+						&rarr; <select v-model="br.targetId">
+							<option v-for="b in battles.filter(x => x.id != routeSelected)" :value="b.id">{{routeNodeLabel(b.id)}}</option>
+						</select>
+						<input type="number" min="0" max="100" v-model.number="br.rate"/>%
+						<a href="#" @click.prevent="onclickRouteDelete(bi)">&#10006;</a>
+					</div>
+					<div>
+						<input type="button" :value="routeAdding ? $t('route_pick_target') : '+ '+$t('add_branch')" v-show="routeSelBattle().branches.length < 4 && battles.length > 1" @click="onclickRouteAdd()"/>
+						<span class="note" v-show="routeSelBattle().branches.length"> {{$t('branch_remainder',[100-routeSelBattle().branches.reduce((a,br) => a+(+br.rate||0),0)])}}</span>
+					</div>
+				</div>
+				<div class="note" v-else>{{$t('route_select_node')}}</div>
+				<div><input type="button" :value="$t('route_clear_all')" @click="onclickRouteClear()"/></div>
+			</div>
+		</div>
+		
+		<hr>
 		<div class="scrollAnchor"><div ref="divSettingsScroll"></div></div>
 		<div id="divSettings">
 			<h2 class="toggleHeader" @click="toggleSection('settings')">{{$t('settings')}} <span class="toggleArrow">{{sectionsOpen.settings ? '&#9660;' : '&#9654;'}}</span></h2>
@@ -847,11 +889,11 @@
 						</div>
 					</div>
 				</div>
+					<div v-show="results.active">
+						<input type="button" value="Show More" v-show="!results.showMore" @click="results.showMore=true"/>
+						<input type="button" value="Show Less" v-show="results.showMore" @click="results.showMore=false"/>
+					</div>
 				</div>
-			</div>
-			<div v-show="results.active">
-				<input type="button" value="Show More" v-show="!results.showMore" @click="results.showMore=true"/>
-				<input type="button" value="Show Less" v-show="results.showMore" @click="results.showMore=false"/>
 			</div>
 		</div>
 		

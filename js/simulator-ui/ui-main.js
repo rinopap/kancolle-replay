@@ -54,7 +54,7 @@ var MECHANICS_LIST = [
 
 // "sim slots" (tabs A/B/C): each slot holds only the player side (fleets/support/friend/LBAS);
 // enemy battles and settings are shared across slots so slots can be compared on equal terms
-var SIM_SLOT_COUNT = 3;
+var SIM_SLOT_COUNT = 7;
 var SIM_SLOT_PLAYER_KEYS = ['fleetFMain','fleetFSupportN','fleetFSupportB','fleetsFFriend','useSupportN','useSupportB','useFF','landBases'];
 // each slot can also hold its OWN enemy fleet (battles); by default slots B/C stay "synced"
 // to slot A's enemy fleet (enemySync: true) for comparing friendly setups against the same
@@ -82,7 +82,9 @@ var UI_MAIN = Vue.createApp({
 		showChangeLog: false,
 		undoStack: [],
 		redoStack: [],
-		sectionsOpen: { player: true, battles: true, settings: true, simulate: true, compare: true, results: true },
+		routeSelected: 0,
+	routeAdding: false,
+	sectionsOpen: { player: true, battles: true, route: true, settings: true, simulate: true, compare: true, results: true },
 		_undoTimer: null,
 		_undoApplying: false,
 		landBases: FLEET_MODEL.getBlankLandBases(),
@@ -460,6 +462,60 @@ var UI_MAIN = Vue.createApp({
 		canDeleteBattles: function() {
 			return this.battles.length > 1;
 		},
+		// ---- route diagram (flowchart) ----
+		routeSize: function() {
+			return { w: Math.max(this.battles.length*110+20, 300), h: 260 };
+		},
+		routeNodes: function() {
+			return this.battles.map((b,i) => ({ id: b.id, ind: i, x: 70+i*110, y: 130 }));
+		},
+		routeVisits: function() {
+			// expected visits per node (fraction of runs), propagated through branch rolls
+			let n = this.battles.length, visits = new Array(n).fill(0);
+			for (let pass=0; pass<60; pass++) {
+				let next = new Array(n).fill(0); next[0] = 1;
+				for (let i=0; i<n; i++) {
+					let rest = visits[i], used = 0;
+					for (let br of this.battles[i].branches || []) {
+						let t = this.battles.findIndex(b => b.id == br.targetId);
+						let r = Math.max(0,Math.min(100,+br.rate||0))/100;
+						if (t < 0) continue;
+						used += r;
+						next[t] += visits[i]*r;
+					}
+					if (i < n-1) next[i+1] += visits[i]*Math.max(0,1-used);
+				}
+				visits = next;
+			}
+			return visits;
+		},
+		routeEdges: function() {
+			let edges = [], n = this.battles.length;
+			for (let i=0; i<n; i++) {
+				let used = 0, brs = this.battles[i].branches || [];
+				brs.forEach((br,bi) => {
+					let t = this.battles.findIndex(b => b.id == br.targetId);
+					if (t < 0) return;
+					used += Math.max(0,+br.rate||0);
+					edges.push({ key: i+'b'+bi, from: i, to: t, bi: bi, rate: +br.rate||0, branch: true });
+				});
+				if (i < n-1) edges.push({ key: i+'n', from: i, to: i+1, rate: Math.max(0,100-used), branch: false });
+			}
+			let nodes = this.routeNodes;
+			return edges.map(e => {
+				let x1 = nodes[e.from].x, x2 = nodes[e.to].x, fwd = e.to > e.from;
+				let span = Math.abs(e.to-e.from);
+				let straight = !e.branch && span == 1;
+				let sy = nodes[e.from].y + (straight ? 0 : (fwd ? -22 : 22));
+				let ey = nodes[e.to].y + (straight ? 0 : (fwd ? -22 : 22));
+				if (straight) { x1 += 30; x2 -= 34; }
+				let h = 30 + span*18, cy = sy + (fwd ? -h : h);
+				e.path = straight ? `M${x1},${sy} L${x2},${ey}` : `M${x1},${sy} Q${(x1+x2)/2},${cy} ${x2},${ey}`;
+				e.lx = (x1+x2)/2; e.ly = straight ? sy-6 : (sy+cy)/2 + (fwd ? -2 : 10);
+				e.sel = this.routeSelected == this.battles[e.from].id;
+				return e;
+			});
+		},
 		hasFCFSettings: function() {
 			return !!(this.settingsFCF.los || this.settingsFCF.radarCount || this.settingsFCF.rules.length
 				|| (this.fleetFMain.ships && this.fleetFMain.ships.find(s => s.neverFCF))
@@ -658,6 +714,39 @@ var UI_MAIN = Vue.createApp({
 		},
 		toggleSection: function(key) {
 			this.sectionsOpen[key] = !this.sectionsOpen[key];
+		},
+		routeSelBattle: function() {
+			return this.battles.find(b => b.id == this.routeSelected) || null;
+		},
+		onclickRouteNode: function(node) {
+			let sel = this.routeSelBattle();
+			if (this.routeAdding && sel && node.id != sel.id) {
+				if (sel.branches.length < 4 && !sel.branches.find(br => br.targetId == node.id)) {
+					let used = sel.branches.reduce((a,br) => a+(+br.rate||0),0);
+					sel.branches.push({ targetId: node.id, rate: Math.max(0,Math.min(10,100-used)) });
+				}
+				this.routeAdding = false;
+				return;
+			}
+			this.routeSelected = node.id;
+			this.routeAdding = false;
+		},
+		onclickRouteAdd: function() {
+			this.routeAdding = !this.routeAdding;
+		},
+		onclickRouteDelete: function(bi) {
+			let sel = this.routeSelBattle();
+			if (sel) sel.branches.splice(bi,1);
+		},
+		onclickRouteClear: function() {
+			for (let b of this.battles) b.branches = [];
+			this.routeAdding = false;
+		},
+		routeNodeLabel: function(id) {
+			return this.$t('node_n',[this.battles.findIndex(b => b.id == id)+1]);
+		},
+		routePct: function(v) {
+			return Math.round(v*1000)/10;
 		},
 		onchangeEnemySync: function(ind) {
 			if (ind != this.simSlotActive || ind == 0) return;

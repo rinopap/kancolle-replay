@@ -677,7 +677,10 @@ div.scrollAnchor > div {
 	border: 1px solid #99BBDD;
 	border-left: none;
 	border-radius: 0 6px 6px 0;
-	overflow: hidden;
+	overflow-x: hidden;
+	/* 7 tabs are tall; on short windows scroll inside the strip instead of running off screen */
+	max-height: calc(100vh - 70px);
+	overflow-y: auto;
 }
 #divSimSlots .simSlotHeader {
 	font-size: 11px;
@@ -693,7 +696,7 @@ div.scrollAnchor > div {
 	font-size: 14px;
 	font-weight: bold;
 	text-align: center;
-	padding: 12px 2px;
+	padding: 8px 2px;
 	border-top: 1px solid #99BBDD;
 	user-select: none;
 }
@@ -723,6 +726,9 @@ div.scrollAnchor > div {
 }
 #divSimSlotCompare table {
 	border-collapse: collapse;
+}
+#divSimSlotCompare > div {
+	overflow-x: auto; /* up to 7 columns can be wider than a narrow window */
 }
 #divSimSlotCompare th, #divSimSlotCompare td {
 	border: 1px solid #ccc;
@@ -799,3 +805,19 @@ div.scrollAnchor > div {
 .divBranches input[type="number"] {
 	width: 50px;
 }
+
+/* route diagram */
+.routeScroll { overflow-x: auto; border: 1px solid #99BBDD; border-radius: 6px; background: #F8FBFF; margin: 6px 0; }
+.routeSvg text { font-size: 12px; fill: #335577; pointer-events: none; }
+.routeEdge path { stroke: #557799; stroke-width: 1.5; }
+.routeEdge.branch path { stroke-dasharray: 5 3; }
+.routeEdge.sel path { stroke: #DD6600; stroke-width: 2.5; }
+.routeEdge.sel text { fill: #DD6600; font-weight: bold; }
+.routeNode { cursor: pointer; }
+.routeNode rect { fill: #FFFFFF; stroke: #557799; stroke-width: 1.5; }
+.routeNode.boss rect { fill: #FFE8E8; stroke: #CC4444; }
+.routeNode.sel rect { stroke: #DD6600; stroke-width: 3; }
+.routeNode.target rect { stroke: #22AA44; stroke-width: 3; stroke-dasharray: 4 2; }
+.routeNode .routeNodeName { font-size: 14px; font-weight: bold; }
+.routeNode .routeNodeVisit { font-size: 11px; fill: #777; }
+.routePanel { margin: 6px 0; }

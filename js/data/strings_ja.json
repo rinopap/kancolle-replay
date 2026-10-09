@@ -2,7 +2,7 @@
 	"change_log": [
 		{
 			"date": "2026-09-22",
-			"txt": "Simulation Multithreading settings"
+			"txt": "シミュレーションのマルチスレッド対応"
 		},
 		{
 			"date": "2026-07-30",
@@ -356,10 +356,10 @@
 	"simulate_n_times": "(Simulate {0} times)",
 	"simulate_n_times_and_show_stats": "シミュレート{inp_num}回の統計を表示",
 	"include_time_statistics": "演出時間を計算する",
-	"use_multithreading": "Use Multithreading",
-	"n_threads": "{inp_num} threads",
-	"use_multithreading_desc1": "Multithreading may increase simulation speed in exchange for a heavier load on the CPU.",
-	"use_multithreading_desc2": "The optimal number of threads depends on your CPU and what you are simulating; higher numbers may not always be faster, so please adjust accordingly. Recommended limit for your CPU (auto-detected): {0}",
+	"use_multithreading": "マルチスレッドを使用",
+	"n_threads": "{inp_num} スレッド",
+	"use_multithreading_desc1": "マルチスレッドを使用すると、複数のシミュレーションを並列実行することでシミュレーション速度が向上しますが、CPUへの負荷が増加します。",
+	"use_multithreading_desc2": "最適なスレッド数は、お使いのCPUやシミュレーションの内容によって異なります。スレッド数を増やしても必ずしも加速するとは限らないため、適宜調整してください。お使いのCPUに推奨されるスレッド数の上限（自動検出）：{0}",
 	"go": "Go",
 	"stop": "Stop",
 	"cancel": "Cancel",
@@ -492,10 +492,10 @@
 	"TCF": "輸送",
 	"from_kc3_file": ".kc3 ファイルから",
 	"sim_slots": "シミュ切替",
-	"sim_slots_tooltip": "味方側の編成(出撃・支援・友軍艦隊・基地航空隊)を最大3パターン切り替えられます。敵編成・各種設定は全パターン共通です。",
+	"sim_slots_tooltip": "味方側の編成(出撃・支援・友軍艦隊・基地航空隊)を最大7パターン(シミュA〜G)切り替えられます。B〜Gは初期状態ではシミュAの敵編成を使います(「Aと同期」)。外すとそのシミュ専用の敵編成を持てます。各種設定は全パターン共通です。",
 	"sim_slot_n": "シミュ{0}",
 	"sim_slot_compare": "シミュ比較",
-	"sim_slot_compare_note": "各シミュの直近の結果を並べています(敵編成・設定は共通)。緑色は各行での最良値です。",
+	"sim_slot_compare_note": "各シミュの直近の結果を並べています(「Aと同期」ONのシミュは敵編成がシミュAと共通です)。緑色は各行での最良値です。",
 	"editor_credit": "編集",
 	"undo": "元に戻す (Ctrl+Z)",
 	"redo": "やり直す (Ctrl+Y)",
@@ -505,6 +505,11 @@
 	"branches_tooltip": "試行ごとに指定した確率で、次のノードではなく別のノードへジャンプします。羅針盤シミュなどで調べた数値を入力してください。",
 	"add_branch": "分岐を追加",
 	"branch_remainder": "残り{0}%は通常通り次のノードへ",
+	"route_diagram": "ルート図",
+	"route_diagram_help": "ノードをクリックして選択し、他のノードへの分岐を追加できます。破線が分岐、実線が通常の進路です。ノード内の%は到達見込み率です。",
+	"route_pick_target": "行き先のノードをクリック...",
+	"route_select_node": "図のノードを選ぶと分岐を編集できます。",
+	"route_clear_all": "分岐をすべて削除",
 	"from_preset": "プリセットから",
 	"clear_all": "艦隊リセット",
 	"export_deckbuilder": "デッキビルダー出力",
@@ -1019,7 +1024,7 @@
 		"warn_tp_formula_605": "注意: 2025春E-5の新TP計算式は暫定的で、更新される可能性があります。",
 		"warn_force_engagement": "メモ: {0}番目のNodeの交戦形態は固定されています",
 		"warn_time_stats": "注意：演出時間を計算すると、結果の出力が大きく遅れる可能性があります。",
-		"warn_carryover_multithread": "Warning: When using Multithreading, since \"Carry over\" settings start at initial values separately for each thread, results may be skewed if the number of threads is high and/or the number of simulations is low."
+		"warn_carryover_multithread": "注意：マルチスレッドを使用する場合、HP/condの持ち越しは各スレッドでそれぞれの設定初期値から開始されます。そのため、スレッド数が多い場合やシミュレーション回数が少ない場合、結果に偏りが生じる可能性があります。"
 	},
 	
 	"ui_search": "検索",
