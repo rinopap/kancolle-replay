@@ -198,6 +198,10 @@
 						{{$t('route_default_removed')}} <a href="#" @click.prevent="restoreRouteNext(routeSelected)">{{$t('route_restore_default')}}</a>
 					</div>
 					<div class="note" v-if="routeNextOff(routeSelected) && routeSelBattle().branches.length">{{$t('route_weights_note')}}</div>
+					<div v-if="routeSelected != 'start'">
+						<input type="button" :value="$t('route_set_boss')" v-show="battles.length > 1 && battles[battles.length-1].id != routeSelected" @click="setBossNode(routeSelected)"/>
+						<span class="note" v-show="battles[battles.length-1].id == routeSelected">{{$t('route_is_boss')}}</span>
+					</div>
 					<div>
 						<input type="button" :value="routeAdding ? $t('route_pick_target') : '+ '+$t('add_branch')" v-show="routeSelBattle().branches.length < 4 && battles.length > 1" @click="routeAdding ? onRouteBgClick() : onRouteNodeDbl({id:routeSelected,x:0,y:0})"/>
 					</div>

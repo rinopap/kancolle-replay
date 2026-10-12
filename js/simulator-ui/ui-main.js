@@ -896,6 +896,31 @@ var UI_MAIN = Vue.createApp({
 			let list = this._routeBranches(id) || [];
 			return Math.max(0,100-list.reduce((a,br) => a+(+br.rate||0),0));
 		},
+		// Designate the boss: the sim engine always treats the LAST node as the boss, so the chosen node
+		// is moved to the end of the list. Existing arrows (including the implicit "next node" ones that
+		// would otherwise silently re-point after the move) and positions are preserved.
+		setBossNode: function(id) {
+			let n = this.battles.length, from = this.battles.findIndex(bt => bt.id == id);
+			if (from < 0 || from == n-1) return;
+			let pos = this.routeNodes; // freeze auto-layout positions so nodes don't jump around
+			for (let p of pos) if (p.ind >= 0) { let bt = this.battles[p.ind]; if (bt.routeX == null) bt.routeX = p.x; if (bt.routeY == null) bt.routeY = p.y; }
+			let order = this.battles.map(bt => bt.id);
+			let newOrder = order.filter(x => x != id).concat([id]);
+			let nextOf = (ord,sid) => sid == 'start' ? ord[0] : ord[ord.indexOf(sid)+1];
+			let sources = [{ id: 'start', route: this.startRoute, list: this.startBranches }];
+			for (let bt of this.battles) sources.push({ id: bt.id, route: bt, list: bt.branches });
+			for (let sr of sources) {
+				if (sr.route.nextOff) continue;
+				let o = nextOf(order,sr.id), nn = nextOf(newOrder,sr.id);
+				if (o == nn) continue;
+				let rem = Math.max(0,100-sr.list.reduce((a,br) => a+(+br.rate||0),0));
+				if (o != null && rem > 0) sr.list.push({ targetId: o, rate: rem });
+				sr.route.nextOff = true;
+			}
+			let moved = this.battles.splice(from,1)[0];
+			this.battles.push(moved);
+			this.battles.forEach((bt,i) => { bt.ind = i; });
+		},
 		routeResetLayout: function() {
 			this.startRoute.x = null; this.startRoute.y = null;
 			for (let bt of this.battles) { bt.routeX = null; bt.routeY = null; }
