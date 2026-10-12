@@ -822,3 +822,13 @@ div.scrollAnchor > div {
 .routeNode .routeNodeVisit { font-size: 11px; fill: #777; }
 .routePanel { margin: 6px 0; }
 .routeNode.start rect { fill: #E8F6E8; stroke: #44AA55; }
+
+.routeSvg { touch-action: none; user-select: none; -webkit-user-select: none; }
+.routeSvg.adding { cursor: crosshair; }
+.routeEdge .routeEdgeHit { stroke: transparent; stroke-width: 14; cursor: pointer; pointer-events: stroke; }
+.routeEdge.srcsel path:not(.routeEdgeHit) { stroke: #E69A55; }
+.routeEdge.sel path:not(.routeEdgeHit) { stroke: #DD2200; stroke-width: 3; }
+.routeEdge.sel text { fill: #DD2200; }
+.routeRubber { stroke: #22AA44; stroke-width: 2; stroke-dasharray: 4 3; pointer-events: none; }
+.routeNode.moving rect { stroke: #2266DD; stroke-width: 3; filter: drop-shadow(0 3px 4px rgba(0,0,0,.35)); }
+.routePanel .branchRow.selEdge { background: #FFE8D8; }

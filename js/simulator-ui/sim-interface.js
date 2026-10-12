@@ -920,14 +920,31 @@ var SIM = {
 		let includeResults = !dataReplay || dataInput.includeTimeStats;
 	
 		let battleInd = 0;
-		if (dataInput.startBranches && dataInput.startBranches.length) {
-			// branch right from the start node: the sortie may begin at a node other than the first
-			let roll = Math.random()*100, cum = 0;
-			for (let br of dataInput.startBranches) {
-				cum += br.rate;
-				if (roll < cum) { battleInd = br.targetInd; break; }
+		// next-node picker shared by the Start node and every battle node. By default whatever
+		// the branches don't claim continues to defInd; with nextOff the default arrow was deleted
+		// so the rates act as relative weights and no branches means the route ends here.
+		let pickNext = (branches,nextOff,defInd) => {
+			let len = dataInput.nodes.length;
+			if (!branches || !branches.length) return nextOff ? len : defInd;
+			if (nextOff) {
+				let total = branches.reduce((a,br) => a+br.rate,0);
+				if (total <= 0) return len;
+				let roll = Math.random()*total, cum = 0;
+				for (let br of branches) {
+					cum += br.rate;
+					if (roll < cum) return br.targetInd;
+				}
+				return branches.at(-1).targetInd;
 			}
-		}
+			let roll = Math.random()*100, cum = 0;
+			for (let br of branches) {
+				cum += br.rate;
+				if (roll < cum) return br.targetInd;
+			}
+			return defInd;
+		};
+		battleInd = pickNext(dataInput.startBranches,dataInput.startNextOff,0);
+		if (battleInd >= dataInput.nodes.length) battleInd = 0; // a Start node with no way out falls back to the first node
 		let _branchSafety = 0;
 		while (battleInd<dataInput.nodes.length) {
 			if (++_branchSafety > 50) break; // guard against a misconfigured branch looping back on itself
@@ -1103,15 +1120,7 @@ var SIM = {
 			// battleInd+1 (identical to the old fixed for-loop); the final node in dataInput.nodes
 			// is always the boss/destination for every possible resolved path, so isBossNode and
 			// the end-of-sortie checks elsewhere (battleNum == dataInput.nodes.length) still hold
-			let nextInd = battleInd+1;
-			if (node.branches && node.branches.length) {
-				let roll = Math.random()*100, cum = 0;
-				for (let br of node.branches) {
-					cum += br.rate;
-					if (roll < cum) { nextInd = br.targetInd; break; }
-				}
-			}
-			battleInd = nextInd;
+			battleInd = pickNext(node.branches,node.nextOff,battleInd+1);
 		}
 		
 		if (includeResults) {

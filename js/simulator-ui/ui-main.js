@@ -59,7 +59,7 @@ var SIM_SLOT_PLAYER_KEYS = ['fleetFMain','fleetFSupportN','fleetFSupportB','flee
 // each slot can also hold its OWN enemy fleet (battles); by default slots B/C stay "synced"
 // to slot A's enemy fleet (enemySync: true) for comparing friendly setups against the same
 // enemy, but can be switched to an independent enemy fleet of their own (enemySync: false)
-var SIM_SLOT_SAVE_KEYS = SIM_SLOT_PLAYER_KEYS.concat(['battles','startBranches']);
+var SIM_SLOT_SAVE_KEYS = SIM_SLOT_PLAYER_KEYS.concat(['battles','startBranches','startRoute']);
 var SIM_SLOT_STORAGE_KEY = 'sim2_slots';
 
 var UNDO_MAX = 50;
@@ -83,8 +83,12 @@ var UI_MAIN = Vue.createApp({
 		undoStack: [],
 		redoStack: [],
 		startBranches: [],
+	startRoute: { nextOff: false, x: null, y: null },
 	routeSelected: 0,
+	routeEdgeSel: null,
 	routeAdding: false,
+	routeCursor: null,
+	routeDragging: null,
 	sectionsOpen: { player: true, battles: true, route: true, settings: true, simulate: true, compare: true, results: true },
 		_undoTimer: null,
 		_undoApplying: false,
@@ -264,6 +268,11 @@ var UI_MAIN = Vue.createApp({
 		this.addNewComp(this.fleetsFFriend,{ isFriend: 1 });
 		
 		document.addEventListener('keydown',function(e) {
+			let tag = e.target && e.target.tagName;
+			if (tag != 'INPUT' && tag != 'SELECT' && tag != 'TEXTAREA') {
+				if ((e.key == 'Delete' || e.key == 'Backspace') && this.routeEdgeSel) { e.preventDefault(); this.deleteRouteEdge(this.routeEdgeSel); return; }
+			}
+			if (e.key == 'Escape' && (this.routeAdding || this.routeEdgeSel)) { this.routeAdding = false; this.routeCursor = null; this.routeEdgeSel = null; return; }
 			if (!(e.ctrlKey || e.metaKey)) return;
 			let key = e.key.toLowerCase();
 			if (key == 'z' && !e.shiftKey) { e.preventDefault(); this.onclickUndo(); }
@@ -464,67 +473,88 @@ var UI_MAIN = Vue.createApp({
 			return this.battles.length > 1;
 		},
 		// ---- route diagram (flowchart) ----
-		routeSize: function() {
-			return { w: Math.max((this.battles.length+1)*110+20, 300), h: 260 };
-		},
-		// layout index 0 = Start (virtual), 1.. = battles in order
 		routeNodes: function() {
-			let nodes = [{ id: 'start', ind: -1, x: 70, y: 130 }];
-			this.battles.forEach((b,i) => nodes.push({ id: b.id, ind: i, x: 70+(i+1)*110, y: 130 }));
+			let st = this.startRoute;
+			let nodes = [{ id: 'start', ind: -1, x: st.x != null ? st.x : 70, y: st.y != null ? st.y : 130 }];
+			this.battles.forEach((bt,i) => nodes.push({
+				id: bt.id, ind: i,
+				x: bt.routeX != null ? bt.routeX : 70+(i+1)*110,
+				y: bt.routeY != null ? bt.routeY : 130,
+			}));
 			return nodes;
 		},
+		routeSize: function() {
+			let maxX = 0, maxY = 0;
+			for (let n of this.routeNodes) { maxX = Math.max(maxX,n.x); maxY = Math.max(maxY,n.y); }
+			return { w: Math.max(maxX+90,300), h: Math.max(maxY+80,260) };
+		},
 		routeSources: function() {
-			let src = [{ id: 'start', branches: this.startBranches }];
-			for (let b of this.battles) src.push({ id: b.id, branches: b.branches || [] });
+			let src = [{ id: 'start', branches: this.startBranches, nextOff: !!this.startRoute.nextOff }];
+			for (let bt of this.battles) src.push({ id: bt.id, branches: bt.branches || [], nextOff: !!bt.nextOff });
 			return src;
 		},
-		routeVisits: function() {
-			// expected visits per layout node (fraction of runs); index 0 = Start
-			let src = this.routeSources, n = src.length, visits = new Array(n).fill(0);
+		// effective percent for each outgoing edge of a source: [{kind,bi,to(layout idx),pct}]
+		routeFlows: function() {
+			let src = this.routeSources, n = src.length;
 			let idx = id => src.findIndex((x,i) => i > 0 && x.id == id);
+			return src.map((sr,i) => {
+				let out = [], used = 0;
+				sr.branches.forEach((br,bi) => {
+					let t = idx(br.targetId);
+					if (t < 0) return;
+					let r = Math.max(0,+br.rate||0);
+					used += r;
+					out.push({ kind: 'b', bi: bi, to: t, raw: r, pct: r });
+				});
+				if (sr.nextOff) {
+					for (let o of out) o.pct = used > 0 ? o.raw/used*100 : 0;
+				} else if (i < n-1) {
+					out.push({ kind: 'n', bi: -1, to: i+1, raw: Math.max(0,100-used), pct: Math.max(0,100-used) });
+				}
+				return out;
+			});
+		},
+		routeVisits: function() {
+			let flows = this.routeFlows, n = flows.length, visits = new Array(n).fill(0);
 			for (let pass=0; pass<60; pass++) {
 				let next = new Array(n).fill(0); next[0] = 1;
 				for (let i=0; i<n; i++) {
-					let used = 0;
-					for (let br of src[i].branches) {
-						let t = idx(br.targetId);
-						let r = Math.max(0,Math.min(100,+br.rate||0))/100;
-						if (t < 0) continue;
-						used += r;
-						next[t] += visits[i]*r;
-					}
-					if (i < n-1) next[i+1] += visits[i]*Math.max(0,1-used);
+					let tot = flows[i].reduce((a,f) => a+f.pct,0);
+					let scale = tot > 100 ? 100/tot : 1;
+					for (let f of flows[i]) next[f.to] += visits[i]*f.pct*scale/100;
 				}
 				visits = next;
 			}
 			return visits;
 		},
 		routeEdges: function() {
-			let src = this.routeSources, n = src.length, nodes = this.routeNodes, edges = [];
-			let idx = id => src.findIndex((x,i) => i > 0 && x.id == id);
-			for (let i=0; i<n; i++) {
-				let used = 0;
-				src[i].branches.forEach((br,bi) => {
-					let t = idx(br.targetId);
-					if (t < 0) return;
-					used += Math.max(0,+br.rate||0);
-					edges.push({ key: i+'b'+bi, from: i, to: t, bi: bi, rate: +br.rate||0, branch: true });
+			let flows = this.routeFlows, nodes = this.routeNodes, srcs = this.routeSources;
+			let has = (a,b) => flows[b].some(f => f.to == a);
+			let clip = (cx,cy,tx,ty) => {
+				let dx = tx-cx, dy = ty-cy;
+				let sc = Math.min(34/(Math.abs(dx)||1e-9),24/(Math.abs(dy)||1e-9));
+				return [cx+dx*sc, cy+dy*sc];
+			};
+			let edges = [];
+			flows.forEach((list,i) => list.forEach(f => {
+				let A = nodes[i], B = nodes[f.to];
+				let dx = B.x-A.x, dy = B.y-A.y, len = Math.hypot(dx,dy) || 1;
+				let off = f.kind == 'n' ? (has(i,f.to) ? 18 : 0) : Math.min(24+len*.15,90);
+				let nx = -dy/len, ny = dx/len;
+				let mx = (A.x+B.x)/2, my = (A.y+B.y)/2;
+				let cx = mx+nx*off*2, cy = my+ny*off*2; // control point (curve peaks at half of this offset)
+				let p1 = clip(A.x,A.y,cx,cy), p2 = clip(B.x,B.y,cx,cy);
+				let key = srcs[i].id + (f.kind == 'n' ? '|n' : '|b|'+f.bi);
+				edges.push({
+					key: key, from: i, fromId: srcs[i].id, to: f.to, branch: f.kind == 'b', bi: f.bi,
+					rate: Math.round(f.pct*10)/10,
+					path: `M${p1[0]},${p1[1]} Q${cx},${cy} ${p2[0]},${p2[1]}`,
+					lx: mx+nx*off + nx*(off ? 8 : 0), ly: my+ny*off + (off ? ny*8 : -8),
+					sel: this.routeEdgeSel == key,
+					srcsel: this.routeSelected == srcs[i].id,
 				});
-				if (i < n-1) edges.push({ key: i+'n', from: i, to: i+1, rate: Math.max(0,100-used), branch: false });
-			}
-			return edges.map(e => {
-				let x1 = nodes[e.from].x, x2 = nodes[e.to].x, fwd = e.to > e.from;
-				let span = Math.abs(e.to-e.from);
-				let straight = !e.branch && span == 1;
-				let sy = nodes[e.from].y + (straight ? 0 : (fwd ? -22 : 22));
-				let ey = nodes[e.to].y + (straight ? 0 : (fwd ? -22 : 22));
-				if (straight) { x1 += 34; x2 -= 36; }
-				let h = 30 + span*18, cy = sy + (fwd ? -h : h);
-				e.path = straight ? `M${x1},${sy} L${x2},${ey}` : `M${x1},${sy} Q${(x1+x2)/2},${cy} ${x2},${ey}`;
-				e.lx = (x1+x2)/2; e.ly = straight ? sy-6 : (sy+cy)/2 + (fwd ? -2 : 10);
-				e.sel = this.routeSelected == nodes[e.from].id;
-				return e;
-			});
+			}));
+			return edges;
 		},
 		hasFCFSettings: function() {
 			return !!(this.settingsFCF.los || this.settingsFCF.radarCount || this.settingsFCF.rules.length
@@ -681,6 +711,9 @@ var UI_MAIN = Vue.createApp({
 				offrouteRate: 0,
 				forceEngagement: 0,
 				branches: [],
+				nextOff: false,
+				routeX: null,
+				routeY: null,
 					
 				enemyComps: [],
 			};
@@ -700,6 +733,7 @@ var UI_MAIN = Vue.createApp({
 			let deletedId = this.battles[indAt].id;
 			this.battles.splice(indAt,1);
 			if (this.routeSelected == deletedId) this.routeSelected = 0;
+			this.routeEdgeSel = null;
 			this.startBranches = this.startBranches.filter(br => br.targetId != deletedId);
 			for (let b of this.battles) {
 				if (b.branches && b.branches.length) b.branches = b.branches.filter(br => br.targetId != deletedId);
@@ -728,34 +762,150 @@ var UI_MAIN = Vue.createApp({
 			this.sectionsOpen[key] = !this.sectionsOpen[key];
 		},
 		routeSelBattle: function() {
-			if (this.routeSelected == 'start') return { id: 'start', branches: this.startBranches };
-			return this.battles.find(b => b.id == this.routeSelected) || null;
+			if (this.routeSelected == 'start') return { id: 'start', branches: this.startBranches, nextOff: !!this.startRoute.nextOff };
+			return this.battles.find(bt => bt.id == this.routeSelected) || null;
+		},
+		_routeSrc: function(id) {
+			return id == 'start' ? this.startRoute : this.battles.find(bt => bt.id == id);
+		},
+		_routeBranches: function(id) {
+			return id == 'start' ? this.startBranches : (this.battles.find(bt => bt.id == id) || {}).branches;
+		},
+		_routeSvgPoint: function(ev) {
+			let svg = this.$refs.routeSvg;
+			if (!svg) return { x: 0, y: 0 };
+			let r = svg.getBoundingClientRect();
+			return { x: ev.clientX-r.left, y: ev.clientY-r.top };
+		},
+		onRouteNodeDown: function(node,ev) {
+			if (ev.button != null && ev.button > 0) return;
+			let pt = this._routeSvgPoint(ev);
+			this._routeDrag = { id: node.id, ox: pt.x-node.x, oy: pt.y-node.y, sx: pt.x, sy: pt.y, active: false, moved: false };
+			clearTimeout(this._routeDragTimer);
+			// long-press to pick a node up
+			this._routeDragTimer = setTimeout(() => {
+				if (this._routeDrag) { this._routeDrag.active = true; this.routeDragging = node.id; }
+			},250);
+			if (ev.target && ev.target.setPointerCapture && ev.pointerId != null) {
+				try { this.$refs.routeSvg.setPointerCapture(ev.pointerId); } catch (e) {}
+			}
+		},
+		onRouteMove: function(ev) {
+			let pt = this._routeSvgPoint(ev);
+			if (this.routeAdding) this.routeCursor = { x: pt.x, y: pt.y };
+			let d = this._routeDrag;
+			if (!d) return;
+			if (!d.active) {
+				if (Math.hypot(pt.x-d.sx,pt.y-d.sy) > 6) { clearTimeout(this._routeDragTimer); d.moved = true; }
+				return;
+			}
+			this.setRoutePos(d.id,Math.round(pt.x-d.ox),Math.round(pt.y-d.oy));
+		},
+		setRoutePos: function(id,x,y) {
+			x = Math.max(36,x); y = Math.max(30,y);
+			let tgt = this._routeSrc(id);
+			if (!tgt) return;
+			if (id == 'start') { this.startRoute.x = x; this.startRoute.y = y; }
+			else { tgt.routeX = x; tgt.routeY = y; }
+		},
+		onRouteUp: function(ev) {
+			let d = this._routeDrag;
+			clearTimeout(this._routeDragTimer);
+			this._routeDrag = null;
+			this.routeDragging = null;
+			if (!d || d.active || d.moved) return;
+			let node = this.routeNodes.find(n => n.id == d.id), now = Date.now();
+			// double-click detected by hand: pointer capture makes native dblclick unreliable on the node
+			if (!this.routeAdding && this._routeLast && this._routeLast.id == d.id && now-this._routeLast.t < 400) {
+				this._routeLast = null;
+				this.onRouteNodeDbl(node);
+				return;
+			}
+			this._routeLast = this.routeAdding ? null : { id: d.id, t: now };
+			this.onclickRouteNode(node);
+		},
+		onRouteBgClick: function() {
+			this.routeAdding = false;
+			this.routeCursor = null;
+			this.routeEdgeSel = null;
+		},
+		onRouteNodeDbl: function(node) {
+			// double-click: start drawing an arrow out of this node
+			if (this.routeAdding) return;
+			this.routeSelected = node.id;
+			this.routeEdgeSel = null;
+			this.routeAdding = true;
+			this.routeCursor = { x: node.x, y: node.y };
 		},
 		onclickRouteNode: function(node) {
-			let sel = this.routeSelBattle();
-			if (this.routeAdding && node.id == 'start') return;
-			if (this.routeAdding && sel && node.id != sel.id) {
-				if (sel.branches.length < 4 && !sel.branches.find(br => br.targetId == node.id)) {
-					let used = sel.branches.reduce((a,br) => a+(+br.rate||0),0);
-					sel.branches.push({ targetId: node.id, rate: Math.max(0,Math.min(10,100-used)) });
-				}
+			if (!node) return;
+			if (this.routeAdding) {
+				if (node.id == this.routeSelected) return;
+				if (node.id != 'start') this.addRouteEdge(this.routeSelected,node.id);
 				this.routeAdding = false;
+				this.routeCursor = null;
 				return;
 			}
 			this.routeSelected = node.id;
+			this.routeEdgeSel = null;
+		},
+		addRouteEdge: function(fromId,toId) {
+			let sr = this._routeSrc(fromId), list = this._routeBranches(fromId);
+			if (!sr || !list || toId == fromId || list.length >= 4) return false;
+			if (list.find(br => br.targetId == toId)) return false;
+			let isOff = fromId == 'start' ? !!this.startRoute.nextOff : !!sr.nextOff;
+			let used = list.reduce((a,br) => a+(+br.rate||0),0);
+			let rate = isOff ? (list.length ? 50 : 100) : Math.max(0,Math.min(10,100-used));
+			list.push({ targetId: toId, rate: rate });
+			this.routeEdgeSel = fromId+'|b|'+(list.length-1);
+			return true;
+		},
+		onclickRouteEdge: function(e) {
+			this.routeSelected = e.fromId;
+			this.routeEdgeSel = e.key;
 			this.routeAdding = false;
 		},
-		onclickRouteAdd: function() {
-			this.routeAdding = !this.routeAdding;
+		deleteRouteEdge: function(key) {
+			let parts = String(key).split('|');
+			let fromId = parts[0] == 'start' ? 'start' : +parts[0];
+			if (parts[1] == 'n') {
+				if (fromId == 'start') this.startRoute.nextOff = true;
+				else { let b = this._routeSrc(fromId); if (b) b.nextOff = true; }
+			} else {
+				let list = this._routeBranches(fromId);
+				if (list) list.splice(+parts[2],1);
+			}
+			this.routeEdgeSel = null;
 		},
-		onclickRouteDelete: function(bi) {
-			let sel = this.routeSelBattle();
-			if (sel) sel.branches.splice(bi,1);
+		restoreRouteNext: function(fromId) {
+			if (fromId == 'start') this.startRoute.nextOff = false;
+			else { let b = this._routeSrc(fromId); if (b) b.nextOff = false; }
+		},
+		routeNextOff: function(id) {
+			return id == 'start' ? !!this.startRoute.nextOff : !!(this._routeSrc(id) || {}).nextOff;
+		},
+		routeHasNext: function(id) {
+			return id == 'start' ? this.battles.length > 0 : this.battles.findIndex(bt => bt.id == id) < this.battles.length-1;
+		},
+		routeNextLabel: function(id) {
+			if (id == 'start') return this.routeNodeLabel(this.battles[0].id);
+			let i = this.battles.findIndex(bt => bt.id == id);
+			return this.routeNodeLabel(this.battles[i+1].id);
+		},
+		routeNextRemainder: function(id) {
+			let list = this._routeBranches(id) || [];
+			return Math.max(0,100-list.reduce((a,br) => a+(+br.rate||0),0));
+		},
+		routeResetLayout: function() {
+			this.startRoute.x = null; this.startRoute.y = null;
+			for (let bt of this.battles) { bt.routeX = null; bt.routeY = null; }
 		},
 		onclickRouteClear: function() {
 			this.startBranches = [];
-			for (let b of this.battles) b.branches = [];
+			this.startRoute.nextOff = false;
+			for (let bt of this.battles) { bt.branches = []; bt.nextOff = false; }
 			this.routeAdding = false;
+			this.routeEdgeSel = null;
 		},
 		routeNodeLabel: function(id) {
 			if (id == 'start') return this.$t('start_node');
@@ -790,6 +940,7 @@ var UI_MAIN = Vue.createApp({
 		_resetBattlesToOne: function() {
 			while (this.battles.length > 1) this.deleteBattle(0,null);
 			this.startBranches = [];
+			this.startRoute = { nextOff: false, x: null, y: null };
 			let b = this.battles[0];
 			b.formation = this.fleetFMain.combined ? CONST.formationCombinedDefault : CONST.formationSingleDefault;
 			b.nodeType = CONST.NODE_NORMAL;
@@ -799,7 +950,7 @@ var UI_MAIN = Vue.createApp({
 			b.subOnly = false; b.useNormalSupport = 0;
 			b.useBalloon = false; b.useAtoll = false; b.useSmoke = false; b.useAnchorageRepair = false;
 			b.offrouteRate = 0; b.forceEngagement = 0;
-			b.branches = [];
+			b.branches = []; b.nextOff = false; b.routeX = null; b.routeY = null;
 			b.enemyComps = [];
 			this.addNewComp(b.enemyComps,{ isEnemy: 1 });
 		},

@@ -855,6 +855,7 @@ window.CONVERT = {
 			lbas: this.uiToSimInputLBAS(dataUI.landBases),
 			fleetFriendComps: dataUI.useFF ? this.uiToSimInputComps(dataUI.fleetsFFriend) : null,
 			nodes: [],
+			startNextOff: !!(dataUI.startRoute && dataUI.startRoute.nextOff),
 			startBranches: (dataUI.startBranches || []).filter(br => nodeIdToNum[br.targetId]).map(br => ({ targetInd: nodeIdToNum[br.targetId]-1, rate: +br.rate || 0 })),
 			continueOnTaiha: !dataUI.settings.retreatOnTaiha,
 			dameconNumTaiha: dataUI.settings.dameconNumTaiha,
@@ -889,6 +890,7 @@ window.CONVERT = {
 				useAnchorageRepair: battleUI.useAnchorageRepair,
 				offrouteRate: battleUI.offrouteRate/100,
 			};
+			if (battleUI.nextOff) nodeInput.nextOff = true;
 			if (battleUI.branches && battleUI.branches.length) {
 				nodeInput.branches = battleUI.branches
 					.filter(br => nodeIdToNum[br.targetId])
@@ -1058,6 +1060,7 @@ window.CONVERT = {
 		}
 		
 		dataSave.startBranches = JSON.parse(JSON.stringify(dataUI.startBranches || []));
+		dataSave.startRoute = JSON.parse(JSON.stringify(dataUI.startRoute || { nextOff: false, x: null, y: null }));
 		
 		dataSave.settings = this.uiToSaveSettings(dataUI.settings);
 		dataSave.settingsFCF = this._copyObj(dataUI.settingsFCF);
@@ -1196,6 +1199,7 @@ window.CONVERT = {
 		
 		if (dataSave.battles) {
 			dataUI.startBranches = JSON.parse(JSON.stringify(dataSave.startBranches || []));
+			dataUI.startRoute = Object.assign({ nextOff: false, x: null, y: null },dataSave.startRoute || {});
 			let idMax = 0, idMin = Number.MAX_SAFE_INTEGER;
 			for (let i=dataUI.battles.length; i<dataSave.battles.length; i++) {
 				this._UI_MAIN.addNewBattle();
