@@ -89,7 +89,8 @@ div.fleet div.iconForm img {
 }
 #divBattles div.battleWrap {
 	border: 1px solid black;
-	width: fit-content;
+	/* fills #divBattles (itself fit-content), so every node box - and the Insert Node buttons under them - share one right edge */
+	width: auto;
 }
 #divBattles span.headerMain {
 	font-weight: bold;
@@ -832,3 +833,10 @@ div.scrollAnchor > div {
 .routeRubber { stroke: #22AA44; stroke-width: 2; stroke-dasharray: 4 3; pointer-events: none; }
 .routeNode.moving rect { stroke: #2266DD; stroke-width: 3; filter: drop-shadow(0 3px 4px rgba(0,0,0,.35)); }
 .routePanel .branchRow.selEdge { background: #FFE8D8; }
+
+/* keep the route-branch block compact so adding branches doesn't stretch the node box */
+#divBattles .divBranches { max-width: 190px; }
+#divBattles .divBranches .note { display: block; white-space: normal; }
+
+/* memo section */
+#divMemo textarea { width: 968px; max-width: 100%; box-sizing: border-box; min-height: 60px; resize: vertical; font-family: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid #99BBDD; border-radius: 4px; }

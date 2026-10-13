@@ -73,6 +73,14 @@
 		<div class="scrollAnchor"><div ref="divPlayerScroll"></div></div>
 		<div style="height:10px"></div>
 		
+		<div id="divMemo">
+			<h2 class="toggleHeader" @click="toggleSection('memo')">{{$t('memo')}} <span class="toggleArrow">{{sectionsOpen.memo ? '&#9660;' : '&#9654;'}}</span></h2>
+			<div v-show="sectionsOpen.memo">
+				<textarea ref="memoText" v-model="memo" rows="3" :placeholder="$t('memo_placeholder')" @input="autoGrowMemo"></textarea>
+			</div>
+		</div>
+		<hr>
+		
 		<div id="divPlayer">
 			<div class="fleetSection">
 				<label><input type="radio" value="en" v-model="$i18n.locale" @change="onchangeLang"/>EN</label> <label><input type="radio" value="ja" v-model="$i18n.locale" @change="onchangeLang"/>JP</label>

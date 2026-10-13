@@ -519,6 +519,8 @@
 	"route_set_boss": "Set this node as boss",
 	"route_is_boss": "This node is the boss.",
 	"share_includes_slots": "Includes all sim slots (A-G).",
+	"memo": "Memo",
+	"memo_placeholder": "Notes (e.g. map, route conditions, what this setup is for). Saved with the simulator data and included in shared links / backups.",
 	"from_preset": "From preset",
 	"clear_all": "Clear All",
 	"export_deckbuilder": "Export DeckBuilder",

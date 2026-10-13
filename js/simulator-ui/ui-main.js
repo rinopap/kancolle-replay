@@ -82,14 +82,15 @@ var UI_MAIN = Vue.createApp({
 		showChangeLog: false,
 		undoStack: [],
 		redoStack: [],
-		startBranches: [],
+		memo: '',
+	startBranches: [],
 	startRoute: { nextOff: false, x: null, y: null },
 	routeSelected: 0,
 	routeEdgeSel: null,
 	routeAdding: false,
 	routeCursor: null,
 	routeDragging: null,
-	sectionsOpen: { player: true, battles: true, route: true, settings: true, simulate: true, compare: true, results: true },
+	sectionsOpen: { memo: true, player: true, battles: true, route: true, settings: true, simulate: true, compare: true, results: true },
 		_undoTimer: null,
 		_undoApplying: false,
 		landBases: FLEET_MODEL.getBlankLandBases(),
@@ -266,6 +267,8 @@ var UI_MAIN = Vue.createApp({
 		this.$i18n.locale = localStorage.sim2_lang || 'en';
 		
 		this.addNewComp(this.fleetsFFriend,{ isFriend: 1 });
+		
+		this.$watch('memo',() => this.$nextTick(() => this.autoGrowMemo()));
 		
 		document.addEventListener('keydown',function(e) {
 			let tag = e.target && e.target.tagName;
@@ -758,6 +761,12 @@ var UI_MAIN = Vue.createApp({
 		
 		simSlotName: function(ind) {
 			return String.fromCharCode(65+ind);
+		},
+		autoGrowMemo: function() {
+			let el = this.$refs.memoText;
+			if (!el) return;
+			el.style.height = 'auto';
+			el.style.height = Math.max(el.scrollHeight+2,60)+'px';
 		},
 		toggleSection: function(key) {
 			this.sectionsOpen[key] = !this.sectionsOpen[key];

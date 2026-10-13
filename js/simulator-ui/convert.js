@@ -1059,6 +1059,7 @@ window.CONVERT = {
 			dataSave.battles.push(battleSave);
 		}
 		
+		dataSave.memo = dataUI.memo || '';
 		dataSave.startBranches = JSON.parse(JSON.stringify(dataUI.startBranches || []));
 		dataSave.startRoute = JSON.parse(JSON.stringify(dataUI.startRoute || { nextOff: false, x: null, y: null }));
 		
@@ -1196,6 +1197,8 @@ window.CONVERT = {
 		if (dataSave.landBases) {
 			this.loadSaveLBAS(dataSave.landBases,dataUI.landBases);
 		}
+		
+		if (typeof dataSave.memo == 'string') dataUI.memo = dataSave.memo;
 		
 		if (dataSave.battles) {
 			dataUI.startBranches = JSON.parse(JSON.stringify(dataSave.startBranches || []));
