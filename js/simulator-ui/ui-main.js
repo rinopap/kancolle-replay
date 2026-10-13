@@ -207,6 +207,7 @@ var UI_MAIN = Vue.createApp({
 		numSimThread: 2,
 		useSimThread: false,
 		includeTimeStats: false,
+		timeExpCut: false,
 		showProgress: false,
 		simProgressNum: 0,
 		simProgressTotal: 0,

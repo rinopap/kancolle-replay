@@ -274,7 +274,7 @@ var SIM = {
 		if (ship1 && this.simResultPrev && this.simResultPrev.battleNum == dataInput.nodes.length && (ship1.HP/ship1.maxHP > .25 || (ship1.repairs && ship1.repairs.length))) this._results.totalCanAdvanceAfter++;
 		
 		if (this._results.replay) {
-			let resultsTime = COMMON.TIME_BATTLE.getTimeStats(this._results.replay);
+			let resultsTime = COMMON.TIME_BATTLE.getTimeStats(this._results.replay,{ expCut: !!dataInput.timeExpCut });
 			let timeBucketUnit = COMMON.TIME_BATTLE.ANIMATIONS.find(a => a.key == 'bucket').time;
 			let timeWithBucket = resultsTime.time + numBuckets*timeBucketUnit;
 			// bin width of 1s is stored so the UI can regroup into wider display buckets after the fact
@@ -1067,6 +1067,11 @@ var SIM = {
 					fleetF.battleType = '6v6';
 					result = sim(fleetF,fleetE,fleetFSupport,lbWaves,doNB,node.NBOnly,node.airOnly,node.airRaid,node.noAmmo,apiBattle,false,fleetFF);
 				}
+			}
+			if (apiBattle && !node.NBOnly && !node.airRaid && !node.airOnly) {
+				// night battle is offered when the day battle did not end in S. If the sim did take the night
+				// battle, it was offered; otherwise result.rank is still the day rank.
+				if (result.didNB || (result.rankDay || result.rank) != 'S') apiBattle.nightPrompt = true;
 			}
 			this.simResultPrev = { battleNum: battleInd+1, result: result };
 			

@@ -599,6 +599,7 @@
 			<div id="divSimStatsButtons">
 				<input type="button" :value="'&#9654; ' + $t('go')" :disabled="!canSim" @click="onclickGo"/>
 				<input type="button" :value="$t('clear')" v-show="results.active&&canSim" @click="onclickClear"/>
+				<label :title="$t('time_exp_cut_tooltip')"><input type="checkbox" v-model="timeExpCut" :disabled="!canSim"/>{{$t('time_exp_cut')}}</label>
 			</div>
 		</div>
 		</div>

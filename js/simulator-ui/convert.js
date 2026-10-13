@@ -870,6 +870,7 @@ window.CONVERT = {
 			mechanics: null,
 			consts: null,
 			includeTimeStats: dataUI.includeTimeStats,
+			timeExpCut: !!dataUI.timeExpCut,
 		};
 		for (let battleUI of dataUI.battles) {
 			let nodeInput = {
@@ -1074,6 +1075,7 @@ window.CONVERT = {
 		if (Object.keys(results).length) dataSave.results = results;
 		
 		if (dataUI.includeTimeStats) dataSave.includeTimeStats = COMMON.TIME_BATTLE.VER;
+		if (dataUI.timeExpCut) dataSave.timeExpCut = true;
 		
 		dataSave.version = this._SAVE_VERSION_CURRENT;
 		
@@ -1236,6 +1238,7 @@ window.CONVERT = {
 		if (dataSave.includeTimeStats && dataSave.includeTimeStats == COMMON.TIME_BATTLE.VER) {
 			dataUI.includeTimeStats = true;
 		}
+		dataUI.timeExpCut = !!dataSave.timeExpCut;
 	},
 	loadSaveGlobal: function(dataSave,dataUI) {
 		dataUI.numSim = dataSave.numSim;

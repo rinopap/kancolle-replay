@@ -39,6 +39,11 @@ COMMON.TIME_BATTLE = {
 		{ key: 'damecon', time: 8, },
 		{ key: 'sink', time: 7.8, },
 		{ key: 'bucket', time: 3, },
+		// fixed per-node overheads (outside the battle itself)
+		{ key: 'nodeStart', time: 7, },
+		{ key: 'nodeEnd', time: 12.5, },
+		{ key: 'nightPrompt', time: 1.5, }, // day battle ended without S rank, so the night battle choice is offered
+		{ key: 'expResult', time: 2.5, }, // only when EXP is not skipped (opts.expCut false)
 	],
 	ANIMATIONS_SIM_ONLY: ['bucket'],
 	
@@ -369,7 +374,8 @@ COMMON.TIME_BATTLE = {
 		return result;
 	},
 	
-	getTimeStats: function(replay) {
+	getTimeStats: function(replay,opts) {
+		opts = opts || {};
 		let animationsTotal = {};
 		for (let obj of this.ANIMATIONS) {
 			animationsTotal[obj.key] = 0;
@@ -381,6 +387,10 @@ COMMON.TIME_BATTLE = {
 			for (let obj of this.ANIMATIONS) {
 				animations[obj.key] = 0;
 			}
+			animations.nodeStart++;
+			animations.nodeEnd++;
+			if (!opts.expCut) animations.expResult++;
+			if (battle.nightPrompt) animations.nightPrompt++;
 			if (battle.data && Object.keys(battle.data).length) {
 				let api = battle.data;
 				if (api.api_search[0] == 5) {

@@ -521,6 +521,8 @@
 	"share_includes_slots": "Includes all sim slots (A-G).",
 	"memo": "Memo",
 	"memo_placeholder": "Notes (e.g. map, route conditions, what this setup is for). Saved with the simulator data and included in shared links / backups.",
+	"time_exp_cut": "EXP cut (skip EXP screen)",
+	"time_exp_cut_tooltip": "Used for the battle time statistics. Each node adds 7s at the start and 12.5s at the end; +1.5s if the day battle did not end in S rank (night battle can be chosen); +2.5s more for the EXP screen if EXP is not cut.",
 	"from_preset": "From preset",
 	"clear_all": "Clear All",
 	"export_deckbuilder": "Export DeckBuilder",
@@ -800,7 +802,7 @@
 	"time_statistics_info_3": "Currently, only animations listed in these sources are supported. {bold}",
 	"time_statistics_info_3b": "Unsupported animations are ignored and do not count towards the average total time stat.",
 	"time_statistics_info_4": "Time not counted include (but may not be limited to):",
-	"time_statistics_info_li0": "All time outside of battles (results, EXP gain, retreat select, compass, formation select, etc)",
+	"time_statistics_info_li0": "All time outside of battles (results, retreat select, compass, formation select, etc), except the fixed per-node times listed in the table (start 7s, end 12.5s, +1.5s when night battle is available, +2.5s EXP screen when EXP is not cut)",
 	"time_statistics_info_li1": "Animation of ship banners sliding in at beginning of battle (including submarine ripples)",
 	"time_statistics_info_li2": "Delay after last attack at end of battle",
 	"time_statistics_info_li3": "Engagement text display",
@@ -856,7 +858,11 @@
 		"nightZuiun": "Night: ZuiunCI ({sec}s)",
 		"damecon": "Sinking + Damage Control ({sec}s)",
 		"sink": "Sinking ({sec}s)",
-		"bucket": "Repair with Bucket ({sec}s)"
+		"bucket": "Repair with Bucket ({sec}s)",
+		"nodeStart": "Node start ({sec}s)",
+		"nodeEnd": "Node end ({sec}s)",
+		"nightPrompt": "Night battle prompt, day not S ({sec}s)",
+		"expResult": "EXP screen, not cut ({sec}s)"
 	},
 	
 	"mechanic": {
