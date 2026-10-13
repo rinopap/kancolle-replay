@@ -1168,9 +1168,13 @@ var UI_MAIN = Vue.createApp({
 			SIM.resetStats();
 			this.$nextTick(() => {
 				this._undoApplying = false;
-				if (reopenKey) COMMON.global.fleetEditorOpen(this[reopenKey]);
-				else if (reopenFriendIndex >= 0 && this.fleetsFFriend[reopenFriendIndex]) COMMON.global.fleetEditorOpen(this.fleetsFFriend[reopenFriendIndex].fleet);
-				else if (reopenFleet) COMMON.global.fleetEditorOpen(reopenFleet);
+				let fleet = null;
+				if (reopenKey) fleet = this[reopenKey];
+				else if (reopenFriendIndex >= 0 && this.fleetsFFriend[reopenFriendIndex]) fleet = this.fleetsFFriend[reopenFriendIndex].fleet;
+				else if (reopenFleet) fleet = reopenFleet;
+				if (!fleet) return;
+				// the fleet panels may still be mounting after the reset; retry once if its panel isn't registered yet
+				if (!COMMON.global.fleetEditorReopen(fleet)) setTimeout(() => COMMON.global.fleetEditorReopen(fleet),50);
 			});
 		},
 		onclickUndo: function() {

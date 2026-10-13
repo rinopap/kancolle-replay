@@ -61,6 +61,7 @@ for (let type in EQTDATA) {
 
 var FLEET_MODEL = {
 	fleetCurrent: null,
+	comps: new Set(), // every mounted CMP_FLEET instance, so the editor can be re-attached to a fleet's panel programmatically
 	
 	getBlankFleet: function(args) {
 		args = args || {};
@@ -281,6 +282,13 @@ window.CMP_FLEET = {
 	data: () => ({
 		expanded: false,
 	}),
+	mounted: function() {
+		FLEET_MODEL.comps.add(this);
+	},
+	unmounted: function() {
+		FLEET_MODEL.comps.delete(this);
+		if (FLEET_MODEL.fleetCurrent === this) FLEET_MODEL.fleetCurrent = null;
+	},
 	computed: {
 		numShipShow: function() {
 			return this.fleet.type == CONST.SF ? CONST.numShipSF : CONST.numShipNormal;
@@ -1455,6 +1463,17 @@ var UI_SHELLORDER = Vue.createApp({
 COMMON.global.fleetEditorOpen = function(fleet) {
 	UI_FLEETEDITOR.doOpen(fleet);
 }
+// re-open the editor inside the given fleet's own panel (expands it and moves the editor element there)
+COMMON.global.fleetEditorReopen = function(fleet) {
+	let raw = Vue.toRaw(fleet);
+	for (let c of FLEET_MODEL.comps) {
+		if (Vue.toRaw(c.fleet) === raw) {
+			if (!c.expanded) c.onclickExpand();
+			return true;
+		}
+	}
+	return false;
+};
 COMMON.global.fleetEditorGetOpenFleet = function() {
 	return UI_FLEETEDITOR.active ? UI_FLEETEDITOR.fleet : null;
 }
