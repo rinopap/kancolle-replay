@@ -518,6 +518,7 @@
 	"route_reset_layout": "Reset layout",
 	"route_set_boss": "Set this node as boss",
 	"route_is_boss": "This node is the boss.",
+	"share_includes_slots": "Includes all sim slots (A-G).",
 	"from_preset": "From preset",
 	"clear_all": "Clear All",
 	"export_deckbuilder": "Export DeckBuilder",

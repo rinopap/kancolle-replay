@@ -306,7 +306,8 @@ var UI_MAIN = Vue.createApp({
 			let dataSave = null, dataReplay = null;
 			let finishInit = function() {
 				CONVERT.loadSave(dataSave,this);
-				if (!dataReplay) this._loadSlotsFromStorage();
+				if (dataSave && dataSave.simSlotsShare) this._applySharedSlots(dataSave.simSlotsShare);
+				else if (!dataReplay) this._loadSlotsFromStorage();
 				this.canSave = true;
 				if (this.autoBonus) {
 					UI_AUTOBONUS.doOpenPreloader(this.autoBonus);
@@ -947,7 +948,11 @@ var UI_MAIN = Vue.createApp({
 			if (!this.simSlots[0].save) return; // slot A has no data yet to sync from
 			this._undoApplying = true;
 			this._resetBattlesToOne();
-			CONVERT.loadSave({ battles: JSON.parse(JSON.stringify(this.simSlots[0].save.battles)) },this);
+			CONVERT.loadSave({
+				battles: JSON.parse(JSON.stringify(this.simSlots[0].save.battles)),
+				startBranches: JSON.parse(JSON.stringify(this.simSlots[0].save.startBranches || [])),
+				startRoute: JSON.parse(JSON.stringify(this.simSlots[0].save.startRoute || {})),
+			},this);
 			this.$nextTick(() => { this._undoApplying = false; });
 		},
 		onclickClearSimSlotCompare: function() {
@@ -1030,6 +1035,8 @@ var UI_MAIN = Vue.createApp({
 			if (ind != 0 && slot.enemySync && this.simSlots[0].save) {
 				// synced to slot A: always pull A's current enemy fleet rather than this slot's own
 				loadData.battles = JSON.parse(JSON.stringify(this.simSlots[0].save.battles));
+				loadData.startBranches = JSON.parse(JSON.stringify(this.simSlots[0].save.startBranches || []));
+				loadData.startRoute = JSON.parse(JSON.stringify(this.simSlots[0].save.startRoute || { nextOff: false, x: null, y: null }));
 			}
 			CONVERT.loadSave(loadData,this);
 			// stats accumulated in SIM belong to the previous slot's input; force a fresh run next time
@@ -1044,6 +1051,47 @@ var UI_MAIN = Vue.createApp({
 			this.undoStack = slot.undoStack || [this._undoSnapshotNow()];
 			this.redoStack = slot.redoStack || [];
 			this.$nextTick(() => { this._undoApplying = false; });
+		},
+		// full save for sharing / backup files: the current state plus every sim slot (A-G), so
+		// the receiver gets all friendly-side setups and not just the slot currently on screen
+		uiToSaveWithSlots: function() {
+			this._saveActiveSlot();
+			let save = CONVERT.uiToSave(this);
+			if (this.simSlots.some((s,i) => i != this.simSlotActive && s.save)) {
+				save.simSlotsShare = {
+					active: this.simSlotActive,
+					slots: this.simSlots.map((s,i) => {
+						if (!s.save) return null;
+						let sv = JSON.parse(JSON.stringify(s.save));
+						if (i != 0 && s.enemySync) { delete sv.battles; delete sv.startBranches; delete sv.startRoute; } // re-synced from A on load
+						return { save: sv, enemySync: s.enemySync };
+					}),
+				};
+			}
+			return save;
+		},
+		_applySharedSlots: function(shared) {
+			try {
+				let slotsData = shared.slots || [];
+				let a = slotsData[0] && slotsData[0].save;
+				for (let i=0; i<SIM_SLOT_COUNT; i++) {
+					let d = slotsData[i];
+					let slot = { save: null, results: null, summary: null, undoStack: null, redoStack: null, enemySync: i != 0 };
+					if (d && d.save) {
+						slot.save = d.save;
+						if (d.enemySync !== undefined) slot.enemySync = d.enemySync;
+						if (i != 0 && slot.enemySync && a) {
+							slot.save.battles = JSON.parse(JSON.stringify(a.battles));
+							slot.save.startBranches = JSON.parse(JSON.stringify(a.startBranches || []));
+							slot.save.startRoute = JSON.parse(JSON.stringify(a.startRoute || { nextOff: false, x: null, y: null }));
+						}
+					}
+					this.simSlots[i] = slot;
+				}
+				if (shared.active >= 0 && shared.active < SIM_SLOT_COUNT) this.simSlotActive = shared.active;
+			} catch(e) {
+				console.error(e);
+			}
 		},
 		_loadSlotsFromStorage: function() {
 			try {
@@ -2585,7 +2633,7 @@ var UI_BACKUP = Vue.createApp({
 		},
 		
 		onclickDownload: function() {
-			let data = this.isReplayImport ? localStorage.sim2 : JSON.stringify(CONVERT.uiToSave(UI_MAIN));
+			let data = this.isReplayImport ? localStorage.sim2 : JSON.stringify(UI_MAIN.uiToSaveWithSlots());
 			let save = { data: data, source: CONST.simSaveKey };
 			
 			let filename = 'KanColle_Sortie_Simulator_Backup_' + (new Date).toISOString().slice(0,10) + '.kcsim';
@@ -2700,7 +2748,7 @@ var UI_BACKUP = Vue.createApp({
 		},
 		onclickShareURL: function() {
 			this.shareURLLoading = true;
-			LZMA.compress(JSON.stringify(CONVERT.uiToSave(UI_MAIN)), 9, (ab) => {
+			LZMA.compress(JSON.stringify(UI_MAIN.uiToSaveWithSlots()), 9, (ab) => {
 				this._shareURLKCRDB(COMMON.arrayBufferToBase64(ab));
 			});
 		},
