@@ -542,6 +542,7 @@
 	"rta_slowest_time": "Slowest time",
 	"rta_p05_time": "p05 time (5th percentile)",
 	"rta_worst5_time": "Mean of slowest 5%",
+	"rta_p95_time": "p95 time (95th percentile)",
 	"from_preset": "From preset",
 	"clear_all": "Clear All",
 	"export_deckbuilder": "Export DeckBuilder",

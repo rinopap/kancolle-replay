@@ -472,6 +472,7 @@ var UI_MAIN = Vue.createApp({
 				{ key: 'timeStddev', label: 'stddev_time', dir: 0 },
 				{ key: 'timeMin', label: 'rta_fastest_time', dir: -1 },
 				{ key: 'timeP05', label: 'rta_p05_time', dir: -1 },
+				{ key: 'timeP95', label: 'rta_p95_time', dir: -1 },
 				{ key: 'timeMax', label: 'rta_slowest_time', dir: -1 },
 				{ key: 'timeWorst5', label: 'rta_worst5_time', dir: -1 }
 			);
@@ -482,7 +483,7 @@ var UI_MAIN = Vue.createApp({
 					let mn = withBucket ? h.minBucket : h.minBasic, mx = withBucket ? h.maxBucket : h.maxBasic;
 					let tail = this._timeTail(withBucket ? h.samplesBucket : h.samples);
 					sm.timeMin = Math.round(1000*mn)/1000; sm.timeMax = Math.round(1000*mx)/1000;
-					sm.timeP05 = tail.p05; sm.timeWorst5 = tail.worst5;
+					sm.timeP05 = tail.p05; sm.timeP95 = tail.p95; sm.timeWorst5 = tail.worst5;
 				}
 				return sm;
 			});
@@ -698,7 +699,7 @@ var UI_MAIN = Vue.createApp({
 			if (mn == null || mx == null) return null;
 			let tail = this._timeTail(withBucket ? t._samplesAllBucket : t._samplesAll);
 			let round3 = v => Math.round(1000*v)/1000;
-			return { min: round3(mn), p05: tail.p05, max: round3(mx), worst5: tail.worst5 };
+			return { min: round3(mn), p05: tail.p05, p95: tail.p95, max: round3(mx), worst5: tail.worst5 };
 		},
 
 		// histogram interval layout shared by the current results and every slot in the compare table
@@ -734,12 +735,12 @@ var UI_MAIN = Vue.createApp({
 	methods: {
 		// exact p05 (5th percentile, nearest-rank) and the mean of the slowest 5% of runs, from the per-run times
 		_timeTail: function(samples) {
-			if (!samples || !samples.length) return { p05: null, worst5: null };
+			if (!samples || !samples.length) return { p05: null, p95: null, worst5: null };
 			let sorted = samples.slice().sort((x,y) => x-y);
 			let n5 = Math.max(1,Math.ceil(sorted.length*0.05));
 			let worst = sorted.slice(-n5);
 			let round3 = v => Math.round(1000*v)/1000;
-			return { p05: round3(sorted[n5-1]), worst5: round3(worst.reduce((x,y) => x+y,0)/worst.length) };
+			return { p05: round3(sorted[n5-1]), p95: round3(sorted[Math.max(0,Math.ceil(sorted.length*0.95)-1)]), worst5: round3(worst.reduce((x,y) => x+y,0)/worst.length) };
 		},
 		_binHistogram: function(hist,totalNum,binning) {
 			let bars = [];
@@ -1084,7 +1085,7 @@ var UI_MAIN = Vue.createApp({
 				bucket: r.bucket, damecon: r.damecon,
 				time: null, timeStddev: null,
 				rta: !!r.rta.active,
-				timeMin: null, timeP05: null, timeMax: null, timeWorst5: null,
+				timeMin: null, timeP05: null, timeP95: null, timeMax: null, timeWorst5: null,
 				timeHist: null,
 			};
 			if (r.showTime) {
@@ -1099,7 +1100,7 @@ var UI_MAIN = Vue.createApp({
 				summary.timeStddev = this.resultsTimeStddevAll;
 				let ex = this.resultsTimeExtremes;
 				if (ex && r.rta.active) {
-					summary.timeMin = ex.min; summary.timeP05 = ex.p05;
+					summary.timeMin = ex.min; summary.timeP05 = ex.p05; summary.timeP95 = ex.p95;
 					summary.timeMax = ex.max; summary.timeWorst5 = ex.worst5;
 				}
 			}
