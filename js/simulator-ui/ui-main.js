@@ -208,6 +208,9 @@ var UI_MAIN = Vue.createApp({
 		useSimThread: false,
 		includeTimeStats: false,
 		timeExpCut: false,
+		rtaMode: false,
+		rtaResortieTime: 0,
+		rtaMaxAttempts: 100,
 		showProgress: false,
 		simProgressNum: 0,
 		simProgressTotal: 0,
@@ -246,6 +249,7 @@ var UI_MAIN = Vue.createApp({
 			fuelHP: 0, ammoHP: 0, steelHP: 0, bauxHP: 0, bucketHP: 0, dameconHP: 0, underwayHP: 0,
 			fuelTP: 0, ammoTP: 0, steelTP: 0, bauxTP: 0, bucketTP: 0, dameconTP: 0, underwayTP: 0,
 			perHPRes: 1, perTPRes: 1,
+			rta: { active: false, runs: 0, attempts: 0, avg: 0, stddev: 0, capped: 0, dist: [] },
 			showTime: false,
 			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0 },
 			timeIncludeBucket: false,
@@ -1325,6 +1329,35 @@ var UI_MAIN = Vue.createApp({
 				this.results.airASP[i] = formatNum(node.airStates[4] / node.num);
 			}
 			
+			let rtaRes = resultSim.rta;
+			if (this.results.rta.active = !!(rtaRes && rtaRes.runs)) {
+				let runs = rtaRes.runs, mean = rtaRes.attempts/runs;
+				this.results.rta.runs = runs;
+				this.results.rta.attempts = rtaRes.attempts;
+				this.results.rta.avg = formatNum(mean);
+				this.results.rta.stddev = formatNum(Math.sqrt(Math.max(0,rtaRes.sumSq/runs - mean*mean)));
+				this.results.rta.capped = rtaRes.capped || 0;
+				let hist = rtaRes.histogram || {}, keys = Object.keys(hist).map(k => +k).sort((a,b) => a-b);
+				let maxRows = 12, dist = [], cum = 0, maxCount = 0;
+				for (let k of keys) {
+					if (dist.length < maxRows-1 || keys.length <= maxRows) {
+						dist.push({ label: '' + k, count: hist[k] });
+					} else if (dist.length == maxRows-1) {
+						dist.push({ label: k + '+', count: hist[k] }); // everything beyond the shown rows is lumped together
+					} else {
+						dist[dist.length-1].count += hist[k];
+					}
+				}
+				for (let d of dist) { maxCount = Math.max(maxCount,d.count); }
+				for (let d of dist) {
+					cum += d.count;
+					d.pct = Math.round(1000*d.count/runs)/10;
+					d.cumPct = Math.round(1000*cum/runs)/10;
+					d.barPct = maxCount ? Math.round(100*d.count/maxCount) : 0;
+				}
+				this.results.rta.dist = dist;
+			}
+			
 			if (this.results.showTime = !!(resultSim.time && resultSim.time.all.num)) {
 				this.results.time._timeAllBasic = resultSim.time.all.time / resultSim.time.completed.num;
 				this.results.time._timeCompletedBasic = resultSim.time.completed.time / resultSim.time.completed.num;
@@ -1351,14 +1384,14 @@ var UI_MAIN = Vue.createApp({
 				this.results.time._histogramAllBucket = resultSim.time.all.histogramBucket || {};
 				this.results.time._histogramNumAll = resultSim.time.all.num;
 				
-				this.results.time.timeNodes = resultSim.time.nodes.map(node => formatNum(node.time / node.num));
+				this.results.time.timeNodes = resultSim.time.nodes.map(node => node.num ? formatNum(node.time / node.num) : 0);
 				
 				this.results.time.animations = [];
 				this.results.time.animationsOther = [];
 				for (let animation of COMMON.TIME_BATTLE.ANIMATIONS) {
 					let numAll = formatNum(resultSim.time.all.animations[animation.key] / resultSim.time.completed.num);
 					let numCompleted = formatNum(resultSim.time.completed.animations[animation.key] / resultSim.time.completed.num);
-					let numNodes = resultSim.time.nodes.map(node => formatNum(node.animations[animation.key] / node.num));
+					let numNodes = resultSim.time.nodes.map(node => node.num ? formatNum((node.animations[animation.key] || 0) / node.num) : 0);
 					let obj = { key: animation.key, time: (animation.time || '???'), numAll: numAll, numCompleted: numCompleted, numNodes: numNodes };
 					if (COMMON.TIME_BATTLE.ANIMATIONS_SIM_ONLY.includes(animation.key)) {
 						this.results.time.animationsOther.push(obj);
@@ -1434,6 +1467,10 @@ var UI_MAIN = Vue.createApp({
 				UI_TIMESTATSINFO.doOpen();
 				e.preventDefault();
 			}
+		},
+		onchangeRtaMode: function() {
+			// RTA's headline number is total time, so turn time statistics on for the user when that's already acknowledged
+			if (this.rtaMode && !this.includeTimeStats && localStorage.sim2_timeStatsVer == COMMON.TIME_BATTLE.VER) this.includeTimeStats = true;
 		},
 		onclickTimeStatsInfo: function(e) {
 			UI_TIMESTATSINFO.doOpen();

@@ -871,6 +871,9 @@ window.CONVERT = {
 			consts: null,
 			includeTimeStats: dataUI.includeTimeStats,
 			timeExpCut: !!dataUI.timeExpCut,
+			rta: !!dataUI.rtaMode,
+			rtaMaxAttempts: dataUI.rtaMaxAttempts,
+			rtaResortieTime: +dataUI.rtaResortieTime || 0,
 		};
 		for (let battleUI of dataUI.battles) {
 			let nodeInput = {
@@ -1076,6 +1079,7 @@ window.CONVERT = {
 		
 		if (dataUI.includeTimeStats) dataSave.includeTimeStats = COMMON.TIME_BATTLE.VER;
 		if (dataUI.timeExpCut) dataSave.timeExpCut = true;
+		if (dataUI.rtaMode) dataSave.rta = { max: dataUI.rtaMaxAttempts, resortieTime: dataUI.rtaResortieTime };
 		
 		dataSave.version = this._SAVE_VERSION_CURRENT;
 		
@@ -1239,6 +1243,11 @@ window.CONVERT = {
 			dataUI.includeTimeStats = true;
 		}
 		dataUI.timeExpCut = !!dataSave.timeExpCut;
+		dataUI.rtaMode = !!dataSave.rta;
+		if (dataSave.rta) {
+			dataUI.rtaMaxAttempts = dataSave.rta.max || 100;
+			dataUI.rtaResortieTime = +dataSave.rta.resortieTime || 0;
+		}
 	},
 	loadSaveGlobal: function(dataSave,dataUI) {
 		dataUI.numSim = dataSave.numSim;

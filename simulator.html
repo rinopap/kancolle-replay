@@ -589,6 +589,14 @@
 			<i18n-t keypath="simulate_n_times_and_show_stats" scope="global"><template v-slot:inp_num><input type="number" min="1" :max="numSimMax" v-model="numSim" /></template></i18n-t>:
 			<div style="margin-left:26px">
 				<div><label><input type="checkbox" v-model="includeTimeStats" @click="onclickTimeStats"/>{{$t('include_time_statistics')}}</label> <a href="#" @click.prevent="onclickTimeStatsInfo" style="font-weight:bold">(?)</a></div>
+				<div class="divRTA">
+					<label><input type="checkbox" v-model="rtaMode" @change="onchangeRtaMode"/>{{$t('rta_mode')}}</label> <span :title="$t('rta_mode_desc')" style="font-weight:bold;text-decoration:underline;cursor:help">(?)</span>
+					<span v-show="rtaMode" class="rtaOptions">
+						<label>{{$t('rta_resortie_time')}} <input type="number" min="0" step="0.5" v-model.number="rtaResortieTime"/>{{$t('rta_sec')}}</label>
+						<label>{{$t('rta_max_attempts')}} <input type="number" min="1" max="1000" v-model.number="rtaMaxAttempts"/></label>
+					</span>
+					<div class="note" v-show="rtaMode && !includeTimeStats">{{$t('rta_need_time_stats')}}</div>
+				</div>
 				<div>
 					<div><label><input type="checkbox" v-model="useSimThread"/>{{$t('use_multithreading')}} <span :title="$t('use_multithreading_desc1')" style="font-weight:bold;text-decoration:underline;cursor:help">(?)</span></label>: <label><i18n-t keypath="n_threads" scope="global">
 						<template v-slot:inp_num><input type="number" v-model.number="numSimThread" min="1" :max="numSimThreadMax" :disabled="!useSimThread" @change="onchangeNumSimThread"/></template>
@@ -635,6 +643,28 @@
 				<div class="note">{{$t('note_calc_wip')}}</div>
 				<div class="noteBold" v-show="results.showCFWarning">{{$t('warn_combined_fleet')}}</div>
 				<div>{{$t('number_of_runs')}}: {{results.totalNum}}</div>
+				<div class="divResultColsWrap" v-show="results.rta.active">
+					<div class="resultCol">
+						<div>
+							<div class="resultBold">{{$t('rta_results')}}:</div>
+							<div class="note">{{$t('rta_results_desc')}}</div>
+							<table class="multi">
+							<tr><th style="text-align:right">{{$t('rta_runs')}}</th><td>{{results.rta.runs}}</td></tr>
+							<tr><th style="text-align:right">{{$t('rta_avg_attempts')}}</th><td><span class="resultBold">{{results.rta.avg}}</span> (±{{results.rta.stddev}})</td></tr>
+							<tr v-show="results.rta.capped"><th style="text-align:right">{{$t('rta_capped')}}</th><td class="noteBold">{{results.rta.capped}}</td></tr>
+							<tr v-show="results.showTime"><th style="text-align:right">{{$t('rta_total_time')}}</th><td><span class="resultBold">{{$t('x_sec',[resultsTimeAll])}}</span> (±{{$t('x_sec',[resultsTimeStddevAll])}})</td></tr>
+							</table>
+							<div class="divTimeHistogram">
+								<div>{{$t('rta_attempts_dist')}}</div>
+								<div class="timeHistogramBar" v-for="d in results.rta.dist">
+									<div class="timeHistogramBarLabel">{{$t('rta_attempt_n',[d.label])}}</div>
+									<div class="timeHistogramBarTrack"><div class="timeHistogramBarFill" :style="{width: d.barPct + '%'}"></div></div>
+									<div class="timeHistogramBarCount">{{d.count}} ({{d.pct}}%, {{$t('rta_cumulative')}} {{d.cumPct}}%)</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
 				<div class="divResultColsWrap">
 					<div class="resultCol">
 						<div>

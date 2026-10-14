@@ -840,3 +840,9 @@ div.scrollAnchor > div {
 
 /* memo section */
 #divMemo textarea { width: 968px; max-width: 100%; box-sizing: border-box; min-height: 60px; resize: vertical; font-family: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid #99BBDD; border-radius: 4px; }
+
+/* RTA mode */
+#divSimStats .divRTA { margin-top: 2px; }
+#divSimStats .rtaOptions { margin-left: 8px; }
+#divSimStats .rtaOptions label { margin-right: 10px; }
+#divSimStats .rtaOptions input[type="number"] { width: 60px; margin: 0 2px; }

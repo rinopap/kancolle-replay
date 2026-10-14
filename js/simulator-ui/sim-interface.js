@@ -114,6 +114,7 @@ var SIM = {
 			totalUnderway: 0,
 			totalCanAdvanceAfter: 0,
 			nodes: [],
+			rta: { runs: 0, attempts: 0, capped: 0, sumSq: 0, histogram: {} },
 			time: {
 				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
 				completed: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
@@ -274,51 +275,64 @@ var SIM = {
 		if (ship1 && this.simResultPrev && this.simResultPrev.battleNum == dataInput.nodes.length && (ship1.HP/ship1.maxHP > .25 || (ship1.repairs && ship1.repairs.length))) this._results.totalCanAdvanceAfter++;
 		
 		if (this._results.replay) {
-			let resultsTime = COMMON.TIME_BATTLE.getTimeStats(this._results.replay,{ expCut: !!dataInput.timeExpCut });
-			let timeBucketUnit = COMMON.TIME_BATTLE.ANIMATIONS.find(a => a.key == 'bucket').time;
-			let timeWithBucket = resultsTime.time + numBuckets*timeBucketUnit;
-			// bin width of 1s is stored so the UI can regroup into wider display buckets after the fact
-			let binKey = Math.max(0,Math.round(resultsTime.time));
-			let binKeyBucket = Math.max(0,Math.round(timeWithBucket));
-			
-			this._results.time.all.num++;
-			this._results.time.all.time += resultsTime.time;
-			this._results.time.all.sumSq += resultsTime.time*resultsTime.time;
-			this._results.time.all.sumSqBucket += timeWithBucket*timeWithBucket;
-			this._results.time.all.histogram[binKey] = (this._results.time.all.histogram[binKey]||0) + 1;
-			this._results.time.all.histogramBucket[binKeyBucket] = (this._results.time.all.histogramBucket[binKeyBucket]||0) + 1;
-			for (let key in resultsTime.animations) {
-				if (!this._results.time.all.animations[key]) this._results.time.all.animations[key] = 0;
-				this._results.time.all.animations[key] += resultsTime.animations[key];
-			}
-			if (!this._results.time.all.animations.bucket) this._results.time.all.animations.bucket = 0;
-			this._results.time.all.animations.bucket += numBuckets;
-			if (this.simResultPrev && this.simResultPrev.battleNum == dataInput.nodes.length) {
-				this._results.time.completed.num++;
-				this._results.time.completed.time += resultsTime.time;
-				this._results.time.completed.sumSq += resultsTime.time*resultsTime.time;
-				this._results.time.completed.sumSqBucket += timeWithBucket*timeWithBucket;
-				this._results.time.completed.histogram[binKey] = (this._results.time.completed.histogram[binKey]||0) + 1;
-				this._results.time.completed.histogramBucket[binKeyBucket] = (this._results.time.completed.histogramBucket[binKeyBucket]||0) + 1;
-				for (let key in resultsTime.animations) {
-					if (!this._results.time.completed.animations[key]) this._results.time.completed.animations[key] = 0;
-					this._results.time.completed.animations[key] += resultsTime.animations[key];
-				}
-				if (!this._results.time.completed.animations.bucket) this._results.time.completed.animations.bucket = 0;
-				this._results.time.completed.animations.bucket += numBuckets;
-			}
-			for (let n=0; n<resultsTime.battles.length; n++) {
-				if (this._results.time.nodes.length-1 < n) {
-					this._results.time.nodes.push({ num: 0, time: 0, animations: {} });
-				}
-				this._results.time.nodes[n].num++;
-				this._results.time.nodes[n].time += resultsTime.battles[n].time;
-				for (let key in resultsTime.battles[n].animations) {
-					if (!this._results.time.nodes[n].animations[key]) this._results.time.nodes[n].animations[key] = 0;
-					this._results.time.nodes[n].animations[key] += resultsTime.battles[n].animations[key];
-				}
+			if (this._rtaState) {
+				// RTA run in progress: collect this attempt's battles; time is computed once for the whole run
+				this._rtaState.numBuckets += numBuckets;
+				this._rtaState.replayBase = this._results.replay;
+				for (let b of this._results.replay.battles) this._rtaState.battles.push(b);
+			} else {
+				let resultsTime = COMMON.TIME_BATTLE.getTimeStats(this._results.replay,{ expCut: !!dataInput.timeExpCut });
+				resultsTime.battles = this._foldByNode(resultsTime,this._results.replay.battles);
+				this._recordTime(resultsTime,numBuckets,!!(this.simResultPrev && this.simResultPrev.battleNum == dataInput.nodes.length));
 			}
 			this._results.replay.battles = [];
+		}
+	},
+	// adds one run's time stats (resultsTime from getTimeStats) to the running totals
+	_recordTime: function(resultsTime,numBuckets,completed) {
+		let timeBucketUnit = COMMON.TIME_BATTLE.ANIMATIONS.find(a => a.key == 'bucket').time;
+		let timeWithBucket = resultsTime.time + numBuckets*timeBucketUnit;
+		// bin width of 1s is stored so the UI can regroup into wider display buckets after the fact
+		let binKey = Math.max(0,Math.round(resultsTime.time));
+		let binKeyBucket = Math.max(0,Math.round(timeWithBucket));
+		
+		this._results.time.all.num++;
+		this._results.time.all.time += resultsTime.time;
+		this._results.time.all.sumSq += resultsTime.time*resultsTime.time;
+		this._results.time.all.sumSqBucket += timeWithBucket*timeWithBucket;
+		this._results.time.all.histogram[binKey] = (this._results.time.all.histogram[binKey]||0) + 1;
+		this._results.time.all.histogramBucket[binKeyBucket] = (this._results.time.all.histogramBucket[binKeyBucket]||0) + 1;
+		for (let key in resultsTime.animations) {
+			if (!this._results.time.all.animations[key]) this._results.time.all.animations[key] = 0;
+			this._results.time.all.animations[key] += resultsTime.animations[key];
+		}
+		if (!this._results.time.all.animations.bucket) this._results.time.all.animations.bucket = 0;
+		this._results.time.all.animations.bucket += numBuckets;
+		if (completed) {
+			this._results.time.completed.num++;
+			this._results.time.completed.time += resultsTime.time;
+			this._results.time.completed.sumSq += resultsTime.time*resultsTime.time;
+			this._results.time.completed.sumSqBucket += timeWithBucket*timeWithBucket;
+			this._results.time.completed.histogram[binKey] = (this._results.time.completed.histogram[binKey]||0) + 1;
+			this._results.time.completed.histogramBucket[binKeyBucket] = (this._results.time.completed.histogramBucket[binKeyBucket]||0) + 1;
+			for (let key in resultsTime.animations) {
+				if (!this._results.time.completed.animations[key]) this._results.time.completed.animations[key] = 0;
+				this._results.time.completed.animations[key] += resultsTime.animations[key];
+			}
+			if (!this._results.time.completed.animations.bucket) this._results.time.completed.animations.bucket = 0;
+			this._results.time.completed.animations.bucket += numBuckets;
+		}
+		for (let n=0; n<resultsTime.battles.length; n++) {
+			if (!resultsTime.battles[n]) continue; // node not visited in this run
+			while (this._results.time.nodes.length-1 < n) {
+				this._results.time.nodes.push({ num: 0, time: 0, animations: {} });
+			}
+			this._results.time.nodes[n].num++;
+			this._results.time.nodes[n].time += resultsTime.battles[n].time;
+			for (let key in resultsTime.battles[n].animations) {
+				if (!this._results.time.nodes[n].animations[key]) this._results.time.nodes[n].animations[key] = 0;
+				this._results.time.nodes[n].animations[key] += resultsTime.battles[n].animations[key];
+			}
 		}
 	},
 
@@ -1173,6 +1187,58 @@ var SIM = {
 		return !!dataInput.includeTimeStats;
 	},
 	
+	// per-battle time stats (in the order the battles happened) -> indexed by route node, summed when a node
+	// was visited more than once; unvisited nodes are left undefined
+	_foldByNode: function(resultsTime,replayBattles) {
+		let out = [];
+		for (let i=0; i<resultsTime.battles.length; i++) {
+			let ni = ((replayBattles[i] && replayBattles[i].node) || (i+1)) - 1;
+			let b = resultsTime.battles[i];
+			if (!out[ni]) out[ni] = { time: 0, animations: {} };
+			out[ni].time += b.time;
+			for (let key in b.animations) out[ni].animations[key] = (out[ni].animations[key] || 0) + b.animations[key];
+		}
+		return out;
+	},
+	
+	// one simulated "run". Normally that's a single sortie; in RTA mode the sortie is repeated after a
+	// retreat (or a boss result below S) until the boss is S-ranked, and time counts from the first
+	// sortie to the boss S as one run.
+	_doSimRun: function(dataInput,dataReplay) {
+		if (!dataInput.rta) {
+			this._doSimSortie(dataInput,dataReplay);
+			return;
+		}
+		let maxAttempts = Math.max(1,Math.min(1000,+dataInput.rtaMaxAttempts || 100));
+		this._rtaState = { battles: [], numBuckets: 0, replayBase: null };
+		let attempts = 0, success = false;
+		try {
+			while (attempts < maxAttempts) {
+				attempts++;
+				this._doSimSortie(dataInput,dataReplay);
+				let prev = this.simResultPrev;
+				if (prev && prev.battleNum == dataInput.nodes.length && prev.result.rank == 'S') { success = true; break; }
+			}
+		} finally {
+			var rta = this._rtaState;
+			this._rtaState = null;
+		}
+		let r = this._results.rta;
+		r.runs++;
+		r.attempts += attempts;
+		r.sumSq += attempts*attempts;
+		if (!success) r.capped++;
+		r.histogram[attempts] = (r.histogram[attempts] || 0) + 1;
+		if (rta.replayBase) {
+			let replay = Object.assign({},rta.replayBase,{ battles: rta.battles });
+			let resultsTime = COMMON.TIME_BATTLE.getTimeStats(replay,{ expCut: !!dataInput.timeExpCut });
+			resultsTime.battles = this._foldByNode(resultsTime,rta.battles);
+			// time spent between sorties (returning to port, resupply, sortie select): user supplied
+			resultsTime.time += (attempts-1)*(+dataInput.rtaResortieTime || 0);
+			this._recordTime(resultsTime,rta.numBuckets,success);
+		}
+	},
+	
 	runStats: function(dataInput,callback) {
 		console.log(dataInput)
 		let includeAPI = this._isIncludeAPI(dataInput);
@@ -1246,7 +1312,7 @@ var SIM = {
 			let runStep = function() {
 				let numStep = Math.min(CONST.numSimStep,numSim-n);
 				for (let i=0; i<numStep; i++) {
-					this._doSimSortie(dataInput,dataReplay);
+					this._doSimRun(dataInput,dataReplay);
 				}
 				n += numStep;
 				if (n >= numSim || this.cancelRun) {
@@ -1285,7 +1351,7 @@ var SIM = {
 		let runStep = function() {
 			let numStep = Math.min(CONST.numSimStep,numSim-n);
 			for (let i=0; i<numStep; i++) {
-				this._doSimSortie(dataInput,dataReplay);
+				this._doSimRun(dataInput,dataReplay);
 			}
 			n += numStep;
 			if (n >= numSim || this.cancelRun) {
