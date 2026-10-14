@@ -471,23 +471,18 @@ var UI_MAIN = Vue.createApp({
 				{ key: 'time', label: 'average_time', dir: -1 },
 				{ key: 'timeStddev', label: 'stddev_time', dir: 0 },
 				{ key: 'timeMin', label: 'rta_fastest_time', dir: -1 },
-				{ key: 'timeMinPct', label: 'rta_fastest_pct', dir: 0, suffix: '%' },
+				{ key: 'timeP05', label: 'rta_p05_time', dir: -1 },
 				{ key: 'timeMax', label: 'rta_slowest_time', dir: -1 },
-				{ key: 'timeMaxPct', label: 'rta_slowest_pct', dir: 0, suffix: '%' }
+				{ key: 'timeWorst5', label: 'rta_worst5_time', dir: -1 }
 			);
-			// histogram intervals are shared by every slot so the percentages are comparable
-			let binning = this.timeBinning;
 			let withBucket = this.results.timeIncludeBucket;
 			let colVals = cols.map(c => {
 				let sm = Object.assign({},c.summary), h = sm.timeHist;
-				if (h && sm.rta && binning) {
-					let hist = withBucket ? h.bucket : h.basic;
+				if (h && sm.rta) {
 					let mn = withBucket ? h.minBucket : h.minBasic, mx = withBucket ? h.maxBucket : h.maxBasic;
-					let bars = this._binHistogram(hist,h.num,binning);
-					let find = v => { let k = Math.round(v); return bars.find(b => k >= b.start && k <= b.end); };
-					let a = find(mn), z = find(mx);
+					let tail = this._timeTail(withBucket ? h.bucket : h.basic,h.num);
 					sm.timeMin = Math.round(1000*mn)/1000; sm.timeMax = Math.round(1000*mx)/1000;
-					sm.timeMinPct = a ? a.pct : null; sm.timeMaxPct = z ? z.pct : null;
+					sm.timeP05 = tail.p05; sm.timeWorst5 = tail.worst5;
 				}
 				return sm;
 			});
@@ -701,12 +696,11 @@ var UI_MAIN = Vue.createApp({
 			let t = this.results.time, withBucket = this.results.timeIncludeBucket;
 			let mn = withBucket ? t._minAllBucket : t._minAllBasic, mx = withBucket ? t._maxAllBucket : t._maxAllBasic;
 			if (mn == null || mx == null) return null;
-			let bars = this.resultsTimeHistogramBars;
-			let find = v => { let k = Math.round(v); return bars.find(b => k >= b.start && k <= b.end); };
-			let a = find(mn), z = find(mx);
+			let tail = this._timeTail(withBucket ? t._histogramAllBucket : t._histogramAll,t._histogramNumAll);
 			let round3 = v => Math.round(1000*v)/1000;
-			return { min: round3(mn), minPct: a ? a.pct : null, minRange: a ? a.label : '', max: round3(mx), maxPct: z ? z.pct : null, maxRange: z ? z.label : '' };
+			return { min: round3(mn), p05: tail.p05, max: round3(mx), worst5: tail.worst5 };
 		},
+
 		// histogram interval layout shared by the current results and every slot in the compare table
 		timeBinning: function() {
 			let withBucket = this.results.timeIncludeBucket;
@@ -738,6 +732,20 @@ var UI_MAIN = Vue.createApp({
 		},
 	},
 	methods: {
+		// p05 (5th percentile = fast end) and the mean of the slowest 5% of runs, from the 1-second histogram
+		_timeTail: function(hist,num) {
+			let keys = Object.keys(hist).map(Number).sort((x,y) => x-y);
+			if (!num || !keys.length) return { p05: null, worst5: null };
+			let n5 = Math.max(1,Math.ceil(num*0.05));
+			let p05 = null, cum = 0;
+			for (let k of keys) { cum += hist[k]; if (cum >= n5) { p05 = k; break; } }
+			let sum = 0, taken = 0;
+			for (let i = keys.length-1; i >= 0 && taken < n5; i--) {
+				let c = Math.min(hist[keys[i]],n5-taken);
+				sum += c*keys[i]; taken += c;
+			}
+			return { p05: p05, worst5: Math.round(10*sum/taken)/10 };
+		},
 		_binHistogram: function(hist,totalNum,binning) {
 			let bars = [];
 			if (!binning || !totalNum) return bars;
@@ -1081,7 +1089,7 @@ var UI_MAIN = Vue.createApp({
 				bucket: r.bucket, damecon: r.damecon,
 				time: null, timeStddev: null,
 				rta: !!r.rta.active,
-				timeMin: null, timeMinPct: null, timeMax: null, timeMaxPct: null,
+				timeMin: null, timeP05: null, timeMax: null, timeWorst5: null,
 				timeHist: null,
 			};
 			if (r.showTime) {
@@ -1095,8 +1103,8 @@ var UI_MAIN = Vue.createApp({
 				summary.timeStddev = this.resultsTimeStddevAll;
 				let ex = this.resultsTimeExtremes;
 				if (ex && r.rta.active) {
-					summary.timeMin = ex.min; summary.timeMinPct = ex.minPct;
-					summary.timeMax = ex.max; summary.timeMaxPct = ex.maxPct;
+					summary.timeMin = ex.min; summary.timeP05 = ex.p05;
+					summary.timeMax = ex.max; summary.timeWorst5 = ex.worst5;
 				}
 			}
 			this.simSlots[this.simSlotActive].summary = summary;

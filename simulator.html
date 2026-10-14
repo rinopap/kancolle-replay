@@ -653,8 +653,10 @@
 							<tr><th style="text-align:right">{{$t('rta_avg_attempts')}}</th><td><span class="resultBold">{{results.rta.avg}}</span> (±{{results.rta.stddev}})</td></tr>
 							<tr v-show="results.rta.capped"><th style="text-align:right">{{$t('rta_capped')}}</th><td class="noteBold">{{results.rta.capped}}</td></tr>
 							<tr v-show="results.showTime"><th style="text-align:right">{{$t('rta_total_time')}}</th><td><span class="resultBold">{{$t('x_sec',[resultsTimeAll])}}</span> (±{{$t('x_sec',[resultsTimeStddevAll])}})</td></tr>
-							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_fastest_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.min])}} <span class="note" style="color:inherit">({{$t('rta_interval_share',[resultsTimeExtremes.minRange,resultsTimeExtremes.minPct])}})</span></td></tr>
-							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_slowest_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.max])}} <span class="note" style="color:inherit">({{$t('rta_interval_share',[resultsTimeExtremes.maxRange,resultsTimeExtremes.maxPct])}})</span></td></tr>
+							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_fastest_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.min])}}</td></tr>
+							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_p05_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.p05])}}</td></tr>
+							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_slowest_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.max])}}</td></tr>
+							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_worst5_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.worst5])}}</td></tr>
 							</table>
 							<div class="divTimeHistogram">
 								<div>{{$t('rta_attempts_dist')}}</div>
