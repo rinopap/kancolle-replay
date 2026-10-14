@@ -251,7 +251,7 @@ var UI_MAIN = Vue.createApp({
 			perHPRes: 1, perTPRes: 1,
 			rta: { active: false, runs: 0, attempts: 0, avg: 0, stddev: 0, capped: 0, dist: [] },
 			showTime: false,
-			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0 },
+			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0, _minAllBasic: null, _maxAllBasic: null, _minAllBucket: null, _maxAllBucket: null },
 			timeIncludeBucket: false,
 		},
 		
@@ -447,6 +447,8 @@ var UI_MAIN = Vue.createApp({
 			let cols = this.simSlotCompareCols;
 			if (cols.length < 2) return [];
 			// dir: 1 = higher is better, -1 = lower is better, 0 = no highlight
+			// RTA-mode columns drop the resource rows and get fastest/slowest-time rows instead
+			let allRta = cols.every(c => c.summary.rta);
 			let defs = [
 				{ key: 'totalNum', label: 'number_of_runs', dir: 0 },
 				{ key: 'rankS', label: 'cond_rankS', dir: 1 },
@@ -454,15 +456,25 @@ var UI_MAIN = Vue.createApp({
 				{ key: 'rankB', label: 'cond_rankB', dir: 1 },
 				{ key: 'flagSunk', label: 'cond_flagsunk', dir: 1 },
 				{ key: 'retreat', label: 'retreat', dir: -1 },
-				{ key: 'fuel', label: 'fuel', dir: -1 },
-				{ key: 'ammo', label: 'ammo', dir: -1 },
-				{ key: 'steel', label: 'steel', dir: -1 },
-				{ key: 'baux', label: 'baux', dir: -1 },
-				{ key: 'bucket', label: 'bucket', dir: -1 },
-				{ key: 'damecon', label: 'repair_team', dir: -1 },
+			];
+			if (!allRta) {
+				defs.push(
+					{ key: 'fuel', label: 'fuel', dir: -1 },
+					{ key: 'ammo', label: 'ammo', dir: -1 },
+					{ key: 'steel', label: 'steel', dir: -1 },
+					{ key: 'baux', label: 'baux', dir: -1 },
+					{ key: 'bucket', label: 'bucket', dir: -1 },
+					{ key: 'damecon', label: 'repair_team', dir: -1 }
+				);
+			}
+			defs.push(
 				{ key: 'time', label: 'average_time', dir: -1 },
 				{ key: 'timeStddev', label: 'stddev_time', dir: 0 },
-			];
+				{ key: 'timeMin', label: 'rta_fastest_time', dir: -1 },
+				{ key: 'timeMinPct', label: 'rta_fastest_pct', dir: 0, suffix: '%' },
+				{ key: 'timeMax', label: 'rta_slowest_time', dir: -1 },
+				{ key: 'timeMaxPct', label: 'rta_slowest_pct', dir: 0, suffix: '%' }
+			);
 			let rows = [];
 			for (let def of defs) {
 				let vals = cols.map(c => c.summary[def.key]);
@@ -473,7 +485,7 @@ var UI_MAIN = Vue.createApp({
 				rows.push({
 					key: def.key,
 					label: def.label,
-					cells: vals.map(v => ({ text: v == null ? '-' : v, best: def.dir != 0 && !allSame && v === best })),
+					cells: vals.map(v => ({ text: v == null ? '-' : v + (def.suffix || ''), best: def.dir != 0 && !allSame && v === best })),
 				});
 			}
 			return rows;
@@ -668,6 +680,17 @@ var UI_MAIN = Vue.createApp({
 		resultsTimeStddevCompleted: function() {
 			return Math.round(1000*(this.results.timeIncludeBucket ? this.results.time._stddevCompletedBucket : this.results.time._stddevCompletedBasic))/1000;
 		},
+		// fastest / slowest run and the share of runs in the histogram interval each one falls in
+		resultsTimeExtremes: function() {
+			let t = this.results.time, withBucket = this.results.timeIncludeBucket;
+			let mn = withBucket ? t._minAllBucket : t._minAllBasic, mx = withBucket ? t._maxAllBucket : t._maxAllBasic;
+			if (mn == null || mx == null) return null;
+			let bars = this.resultsTimeHistogramBars;
+			let find = v => { let k = Math.round(v); return bars.find(b => k >= b.start && k <= b.end); };
+			let a = find(mn), z = find(mx);
+			let round3 = v => Math.round(1000*v)/1000;
+			return { min: round3(mn), minPct: a ? a.pct : null, minRange: a ? a.label : '', max: round3(mx), maxPct: z ? z.pct : null, maxRange: z ? z.label : '' };
+		},
 		resultsTimeHistogramBars: function() {
 			let hist = this.results.timeIncludeBucket ? this.results.time._histogramAllBucket : this.results.time._histogramAll;
 			let totalNum = this.results.time._histogramNumAll;
@@ -682,7 +705,7 @@ var UI_MAIN = Vue.createApp({
 				let count = 0;
 				for (let k = start; k <= end; k++) count += hist[k] || 0;
 				if (!count && !bars.length) continue; // trim leading empty bins
-				bars.push({ label: (binWidth > 1 ? start + '-' + end : '' + start), count: count, pct: Math.round(1000*count/totalNum)/10 });
+				bars.push({ label: (binWidth > 1 ? start + '-' + end : '' + start), start: start, end: end, count: count, pct: Math.round(1000*count/totalNum)/10 });
 			}
 			while (bars.length && !bars.at(-1).count) bars.pop(); // trim trailing empty bins
 			let maxCount = Math.max(1,...bars.map(b => b.count));
@@ -1027,10 +1050,17 @@ var UI_MAIN = Vue.createApp({
 				ammo: r.ammoSupply, steel: r.steelRepair, baux: r.bauxSupply,
 				bucket: r.bucket, damecon: r.damecon,
 				time: null, timeStddev: null,
+				rta: !!r.rta.active,
+				timeMin: null, timeMinPct: null, timeMax: null, timeMaxPct: null,
 			};
 			if (r.showTime) {
 				summary.time = this.resultsTimeAll;
 				summary.timeStddev = this.resultsTimeStddevAll;
+				let ex = this.resultsTimeExtremes;
+				if (ex && r.rta.active) {
+					summary.timeMin = ex.min; summary.timeMinPct = ex.minPct;
+					summary.timeMax = ex.max; summary.timeMaxPct = ex.maxPct;
+				}
 			}
 			this.simSlots[this.simSlotActive].summary = summary;
 		},
@@ -1383,6 +1413,10 @@ var UI_MAIN = Vue.createApp({
 				this.results.time._histogramAll = resultSim.time.all.histogram || {};
 				this.results.time._histogramAllBucket = resultSim.time.all.histogramBucket || {};
 				this.results.time._histogramNumAll = resultSim.time.all.num;
+				this.results.time._minAllBasic = resultSim.time.all.minTime;
+				this.results.time._maxAllBasic = resultSim.time.all.maxTime;
+				this.results.time._minAllBucket = resultSim.time.all.minTimeBucket;
+				this.results.time._maxAllBucket = resultSim.time.all.maxTimeBucket;
 				
 				this.results.time.timeNodes = resultSim.time.nodes.map(node => node.num ? formatNum(node.time / node.num) : 0);
 				

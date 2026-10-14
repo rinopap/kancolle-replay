@@ -116,7 +116,7 @@ var SIM = {
 			nodes: [],
 			rta: { runs: 0, attempts: 0, capped: 0, sumSq: 0, histogram: {} },
 			time: {
-				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
+				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, minTime: null, maxTime: null, minTimeBucket: null, maxTimeBucket: null, animations: {}, histogram: {}, histogramBucket: {} },
 				completed: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
 				nodes: [],
 			},
@@ -298,6 +298,14 @@ var SIM = {
 		
 		this._results.time.all.num++;
 		this._results.time.all.time += resultsTime.time;
+		{
+			// fastest / slowest single run (min/max are merged specially when combining worker results)
+			let t = this._results.time.all;
+			t.minTime = t.minTime == null ? resultsTime.time : Math.min(t.minTime,resultsTime.time);
+			t.maxTime = t.maxTime == null ? resultsTime.time : Math.max(t.maxTime,resultsTime.time);
+			t.minTimeBucket = t.minTimeBucket == null ? timeWithBucket : Math.min(t.minTimeBucket,timeWithBucket);
+			t.maxTimeBucket = t.maxTimeBucket == null ? timeWithBucket : Math.max(t.maxTimeBucket,timeWithBucket);
+		}
 		this._results.time.all.sumSq += resultsTime.time*resultsTime.time;
 		this._results.time.all.sumSqBucket += timeWithBucket*timeWithBucket;
 		this._results.time.all.histogram[binKey] = (this._results.time.all.histogram[binKey]||0) + 1;
@@ -1332,6 +1340,14 @@ var SIM = {
 	},
 	_combineResultsWorker: function(resultsFrom,resultsTo) {
 		for (let key in resultsFrom) {
+			if (key.startsWith('minTime') || key.startsWith('maxTime')) {
+				// extremes, not counters: keep the smaller/larger instead of summing
+				let v = resultsFrom[key];
+				if (v == null) continue;
+				if (resultsTo[key] == null) resultsTo[key] = v;
+				else resultsTo[key] = key.startsWith('minTime') ? Math.min(resultsTo[key],v) : Math.max(resultsTo[key],v);
+				continue;
+			}
 			if (typeof resultsFrom[key] === 'object') {
 				if (resultsTo[key] == null) resultsTo[key] = Array.isArray(resultsFrom[key]) ? [] : {};
 				this._combineResultsWorker(resultsFrom[key],resultsTo[key]);
