@@ -721,7 +721,8 @@ var UI_MAIN = Vue.createApp({
 			let keys = [].concat(...hists.map(h => Object.keys(h).map(Number)));
 			if (!keys.length) return null;
 			let min = Math.min(...keys), max = Math.max(...keys);
-			return { min: min, max: max, binWidth: Math.max(1,Math.ceil((max-min+1)/20)) };
+			// fixed 5-second intervals aligned to 1-5, 6-10, ... (e.g. fastest 112 / slowest 489 -> 111-115 ... 486-490)
+			return { min: Math.floor((min-1)/5)*5+1, max: max, binWidth: 5 };
 		},
 		resultsTimeHistogramBars: function() {
 			let hist = this.results.timeIncludeBucket ? this.results.time._histogramAllBucket : this.results.time._histogramAll;
