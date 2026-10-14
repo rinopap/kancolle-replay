@@ -251,7 +251,7 @@ var UI_MAIN = Vue.createApp({
 			perHPRes: 1, perTPRes: 1,
 			rta: { active: false, runs: 0, attempts: 0, avg: 0, stddev: 0, capped: 0, dist: [] },
 			showTime: false,
-			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0, _minAllBasic: null, _maxAllBasic: null, _minAllBucket: null, _maxAllBucket: null },
+			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0, _minAllBasic: null, _maxAllBasic: null, _minAllBucket: null, _maxAllBucket: null, _samplesAll: [], _samplesAllBucket: [] },
 			timeIncludeBucket: false,
 		},
 		
@@ -480,7 +480,7 @@ var UI_MAIN = Vue.createApp({
 				let sm = Object.assign({},c.summary), h = sm.timeHist;
 				if (h && sm.rta) {
 					let mn = withBucket ? h.minBucket : h.minBasic, mx = withBucket ? h.maxBucket : h.maxBasic;
-					let tail = this._timeTail(withBucket ? h.bucket : h.basic,h.num);
+					let tail = this._timeTail(withBucket ? h.samplesBucket : h.samples);
 					sm.timeMin = Math.round(1000*mn)/1000; sm.timeMax = Math.round(1000*mx)/1000;
 					sm.timeP05 = tail.p05; sm.timeWorst5 = tail.worst5;
 				}
@@ -696,7 +696,7 @@ var UI_MAIN = Vue.createApp({
 			let t = this.results.time, withBucket = this.results.timeIncludeBucket;
 			let mn = withBucket ? t._minAllBucket : t._minAllBasic, mx = withBucket ? t._maxAllBucket : t._maxAllBasic;
 			if (mn == null || mx == null) return null;
-			let tail = this._timeTail(withBucket ? t._histogramAllBucket : t._histogramAll,t._histogramNumAll);
+			let tail = this._timeTail(withBucket ? t._samplesAllBucket : t._samplesAll);
 			let round3 = v => Math.round(1000*v)/1000;
 			return { min: round3(mn), p05: tail.p05, max: round3(mx), worst5: tail.worst5 };
 		},
@@ -732,19 +732,14 @@ var UI_MAIN = Vue.createApp({
 		},
 	},
 	methods: {
-		// p05 (5th percentile = fast end) and the mean of the slowest 5% of runs, from the 1-second histogram
-		_timeTail: function(hist,num) {
-			let keys = Object.keys(hist).map(Number).sort((x,y) => x-y);
-			if (!num || !keys.length) return { p05: null, worst5: null };
-			let n5 = Math.max(1,Math.ceil(num*0.05));
-			let p05 = null, cum = 0;
-			for (let k of keys) { cum += hist[k]; if (cum >= n5) { p05 = k; break; } }
-			let sum = 0, taken = 0;
-			for (let i = keys.length-1; i >= 0 && taken < n5; i--) {
-				let c = Math.min(hist[keys[i]],n5-taken);
-				sum += c*keys[i]; taken += c;
-			}
-			return { p05: p05, worst5: Math.round(10*sum/taken)/10 };
+		// exact p05 (5th percentile, nearest-rank) and the mean of the slowest 5% of runs, from the per-run times
+		_timeTail: function(samples) {
+			if (!samples || !samples.length) return { p05: null, worst5: null };
+			let sorted = samples.slice().sort((x,y) => x-y);
+			let n5 = Math.max(1,Math.ceil(sorted.length*0.05));
+			let worst = sorted.slice(-n5);
+			let round3 = v => Math.round(1000*v)/1000;
+			return { p05: round3(sorted[n5-1]), worst5: round3(worst.reduce((x,y) => x+y,0)/worst.length) };
 		},
 		_binHistogram: function(hist,totalNum,binning) {
 			let bars = [];
@@ -1096,6 +1091,7 @@ var UI_MAIN = Vue.createApp({
 				let t = r.time;
 				summary.timeHist = {
 					num: t._histogramNumAll,
+					samples: t._samplesAll.slice(), samplesBucket: t._samplesAllBucket.slice(),
 					basic: Object.assign({},t._histogramAll), bucket: Object.assign({},t._histogramAllBucket),
 					minBasic: t._minAllBasic, maxBasic: t._maxAllBasic, minBucket: t._minAllBucket, maxBucket: t._maxAllBucket,
 				};
@@ -1458,6 +1454,8 @@ var UI_MAIN = Vue.createApp({
 				this.results.time._histogramAll = resultSim.time.all.histogram || {};
 				this.results.time._histogramAllBucket = resultSim.time.all.histogramBucket || {};
 				this.results.time._histogramNumAll = resultSim.time.all.num;
+				this.results.time._samplesAll = resultSim.time.all.samples || [];
+				this.results.time._samplesAllBucket = resultSim.time.all.samplesBucket || [];
 				this.results.time._minAllBasic = resultSim.time.all.minTime;
 				this.results.time._maxAllBasic = resultSim.time.all.maxTime;
 				this.results.time._minAllBucket = resultSim.time.all.minTimeBucket;

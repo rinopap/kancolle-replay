@@ -116,7 +116,7 @@ var SIM = {
 			nodes: [],
 			rta: { runs: 0, attempts: 0, capped: 0, sumSq: 0, histogram: {} },
 			time: {
-				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, minTime: null, maxTime: null, minTimeBucket: null, maxTimeBucket: null, animations: {}, histogram: {}, histogramBucket: {} },
+				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, minTime: null, maxTime: null, minTimeBucket: null, maxTimeBucket: null, samples: [], samplesBucket: [], animations: {}, histogram: {}, histogramBucket: {} },
 				completed: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
 				nodes: [],
 			},
@@ -301,6 +301,7 @@ var SIM = {
 		{
 			// fastest / slowest single run (min/max are merged specially when combining worker results)
 			let t = this._results.time.all;
+			t.samples.push(resultsTime.time); t.samplesBucket.push(timeWithBucket); // exact per-run times (for percentiles)
 			t.minTime = t.minTime == null ? resultsTime.time : Math.min(t.minTime,resultsTime.time);
 			t.maxTime = t.maxTime == null ? resultsTime.time : Math.max(t.maxTime,resultsTime.time);
 			t.minTimeBucket = t.minTimeBucket == null ? timeWithBucket : Math.min(t.minTimeBucket,timeWithBucket);
@@ -1340,6 +1341,11 @@ var SIM = {
 	},
 	_combineResultsWorker: function(resultsFrom,resultsTo) {
 		for (let key in resultsFrom) {
+			if (key.startsWith('samples')) {
+				// per-run sample lists: concatenate across workers
+				resultsTo[key] = (resultsTo[key] || []).concat(resultsFrom[key]);
+				continue;
+			}
 			if (key.startsWith('minTime') || key.startsWith('maxTime')) {
 				// extremes, not counters: keep the smaller/larger instead of summing
 				let v = resultsFrom[key];
