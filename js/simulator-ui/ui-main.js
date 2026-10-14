@@ -475,9 +475,25 @@ var UI_MAIN = Vue.createApp({
 				{ key: 'timeMax', label: 'rta_slowest_time', dir: -1 },
 				{ key: 'timeMaxPct', label: 'rta_slowest_pct', dir: 0, suffix: '%' }
 			);
+			// histogram intervals are shared by every slot so the percentages are comparable
+			let binning = this.timeBinning;
+			let withBucket = this.results.timeIncludeBucket;
+			let colVals = cols.map(c => {
+				let sm = Object.assign({},c.summary), h = sm.timeHist;
+				if (h && sm.rta && binning) {
+					let hist = withBucket ? h.bucket : h.basic;
+					let mn = withBucket ? h.minBucket : h.minBasic, mx = withBucket ? h.maxBucket : h.maxBasic;
+					let bars = this._binHistogram(hist,h.num,binning);
+					let find = v => { let k = Math.round(v); return bars.find(b => k >= b.start && k <= b.end); };
+					let a = find(mn), z = find(mx);
+					sm.timeMin = Math.round(1000*mn)/1000; sm.timeMax = Math.round(1000*mx)/1000;
+					sm.timeMinPct = a ? a.pct : null; sm.timeMaxPct = z ? z.pct : null;
+				}
+				return sm;
+			});
 			let rows = [];
 			for (let def of defs) {
-				let vals = cols.map(c => c.summary[def.key]);
+				let vals = colVals.map(c => c[def.key]);
 				if (vals.every(v => v == null)) continue;
 				let nums = vals.filter(v => v != null);
 				let best = def.dir == 1 ? Math.max(...nums) : def.dir == -1 ? Math.min(...nums) : null;
@@ -691,23 +707,25 @@ var UI_MAIN = Vue.createApp({
 			let round3 = v => Math.round(1000*v)/1000;
 			return { min: round3(mn), minPct: a ? a.pct : null, minRange: a ? a.label : '', max: round3(mx), maxPct: z ? z.pct : null, maxRange: z ? z.label : '' };
 		},
+		// histogram interval layout shared by the current results and every slot in the compare table
+		timeBinning: function() {
+			let withBucket = this.results.timeIncludeBucket;
+			let hists = [];
+			let cur = withBucket ? this.results.time._histogramAllBucket : this.results.time._histogramAll;
+			if (this.results.time._histogramNumAll) hists.push(cur);
+			this.simSlots.forEach((slot,ind) => {
+				if (ind == this.simSlotActive || !slot.summary || !slot.summary.timeHist) return;
+				let h = slot.summary.timeHist;
+				if (h.num) hists.push(withBucket ? h.bucket : h.basic);
+			});
+			let keys = [].concat(...hists.map(h => Object.keys(h).map(Number)));
+			if (!keys.length) return null;
+			let min = Math.min(...keys), max = Math.max(...keys);
+			return { min: min, max: max, binWidth: Math.max(1,Math.ceil((max-min+1)/20)) };
+		},
 		resultsTimeHistogramBars: function() {
 			let hist = this.results.timeIncludeBucket ? this.results.time._histogramAllBucket : this.results.time._histogramAll;
-			let totalNum = this.results.time._histogramNumAll;
-			let keys = Object.keys(hist).map(Number);
-			if (!keys.length || !totalNum) return [];
-			let min = Math.min(...keys), max = Math.max(...keys);
-			let targetBars = 20;
-			let binWidth = Math.max(1, Math.ceil((max-min+1) / targetBars));
-			let bars = [];
-			for (let start = min; start <= max; start += binWidth) {
-				let end = start + binWidth - 1;
-				let count = 0;
-				for (let k = start; k <= end; k++) count += hist[k] || 0;
-				if (!count && !bars.length) continue; // trim leading empty bins
-				bars.push({ label: (binWidth > 1 ? start + '-' + end : '' + start), start: start, end: end, count: count, pct: Math.round(1000*count/totalNum)/10 });
-			}
-			while (bars.length && !bars.at(-1).count) bars.pop(); // trim trailing empty bins
+			let bars = this._binHistogram(hist,this.results.time._histogramNumAll,this.timeBinning);
 			let maxCount = Math.max(1,...bars.map(b => b.count));
 			for (let b of bars) b.barPct = Math.round(100*b.count/maxCount);
 			return bars;
@@ -719,6 +737,17 @@ var UI_MAIN = Vue.createApp({
 		},
 	},
 	methods: {
+		_binHistogram: function(hist,totalNum,binning) {
+			let bars = [];
+			if (!binning || !totalNum) return bars;
+			for (let start = binning.min; start <= binning.max; start += binning.binWidth) {
+				let end = start + binning.binWidth - 1;
+				let count = 0;
+				for (let k = start; k <= end; k++) count += hist[k] || 0;
+				bars.push({ label: (binning.binWidth > 1 ? start + '-' + end : '' + start), start: start, end: end, count: count, pct: Math.round(1000*count/totalNum)/10 });
+			}
+			return bars;
+		},
 		addNewBattle: function(indAt) {
 			if (this.battles.length >= CONST.numBattlesMax) return;
 			indAt = indAt != null ? indAt : this.battles.length;
@@ -1052,8 +1081,15 @@ var UI_MAIN = Vue.createApp({
 				time: null, timeStddev: null,
 				rta: !!r.rta.active,
 				timeMin: null, timeMinPct: null, timeMax: null, timeMaxPct: null,
+				timeHist: null,
 			};
 			if (r.showTime) {
+				let t = r.time;
+				summary.timeHist = {
+					num: t._histogramNumAll,
+					basic: Object.assign({},t._histogramAll), bucket: Object.assign({},t._histogramAllBucket),
+					minBasic: t._minAllBasic, maxBasic: t._maxAllBasic, minBucket: t._minAllBucket, maxBucket: t._maxAllBucket,
+				};
 				summary.time = this.resultsTimeAll;
 				summary.timeStddev = this.resultsTimeStddevAll;
 				let ex = this.resultsTimeExtremes;
