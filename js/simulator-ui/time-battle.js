@@ -149,11 +149,15 @@ COMMON.TIME_BATTLE = {
 		}
 		return 0;
 	},
+	_IDS_NO_DLC_ANIM_SHIPS: [1556,1631,1632,1633,1650,1651,1652,2047,2048,2094,2095,2096,1889,1890,1891,1892,1893,1894,2091,2092,2093,2307,2308,2309,2234,2235,2236,1573,1613,2243,2244,2245,2246,1605,1606,1607,1608,1699,1700,1701,1702,1703,1704,2023,2024,2025,2027,2028,1587,1588,1589,1590,1581,1582],
+	_IDS_NO_DLC_ANIM_EQUIPS: [514,436,482,166,167,193],
 	_getHasWG: function(shipA,shipD) {
 		return SHIPDATA[shipD.mst_id] && SHIPDATA[shipD.mst_id].installtype && shipA.equip.find(id => [126,346,347,348,349].includes(id));
 	},
 	_getHasDLC: function(shipA,shipD) {
-		return (SHIPDATA[shipD.mst_id] && SHIPDATA[shipD.mst_id].installtype && shipA.equip.find(id => EQDATA[id] && [24,46].includes(EQDATA[id].type))) //approximation
+		// same exception as the replay player: these ships get the normal shelling animation with these items
+		let noDLCAnim = this._IDS_NO_DLC_ANIM_SHIPS.includes(shipA.mst_id);
+		return (SHIPDATA[shipD.mst_id] && SHIPDATA[shipD.mst_id].installtype && shipA.equip.find(id => EQDATA[id] && [24,46].includes(EQDATA[id].type) && !(noDLCAnim && this._IDS_NO_DLC_ANIM_EQUIPS.includes(id)))) //approximation
 			|| (SHIPDATA[shipD.mst_id] && SHIPDATA[shipD.mst_id].isPT && shipA.equip.find(id => [408,409].includes(id)));
 	},
 	
