@@ -378,6 +378,8 @@ var eventqueue = [];
 var battlestarts = [];
 var HPtotal1 = 0, HPtotal2 = 0, HPnow1 = 0, HPnow2 = 0;
 
+var LANDINGCRAFT_ANIM_EXCLUDE_SHIPS = [1556,1631,1632,1633,1650,1651,1652,2047,2048,2094,2095,2096,1889,1890,1891,1892,1893,1894,2091,2092,2093,2307,2308,2309,2234,2235,2236,1573,1613,2243,2244,2245,2246,1605,1606,1607,1608,1699,1700,1701,1702,1703,1704,2023,2024,2025,2027,2028,1587,1588,1589,1590,1581,1582];
+var LANDINGCRAFT_ANIM_EXCLUDE_EQUIPS = [514,436,482,166,167,193];
 function createShip(data,side,i,damaged) {
 	var ship = new ShipG(i+((side==1)?10:0),side,parseInt(data[1]));
 	var graphic = new PIXI.Container();
@@ -425,8 +427,14 @@ function createShip(data,side,i,damaged) {
 			if (hasonlytorp == undefined && eq.type == TORPEDO) hasonlytorp = true;
 			if ([MAINGUNS,MAINGUNM,MAINGUNL].indexOf(eq.type) != -1) hasonlytorp = false;
 			if (eq.type == WG42) ship.hasWG = true;
-			if (eq.type == LANDINGCRAFT) ship.haslandingcraft1 = true;
-			if (eq.type == LANDINGTANK) ship.haslandingcraft2 = true;
+			// these ships don't get the landing craft attack animation from these items (normal shelling animation instead);
+			// any other landing craft equipment on the ship still triggers it
+			if (LANDINGCRAFT_ANIM_EXCLUDE_SHIPS.indexOf(parseInt(data[0])) != -1 && LANDINGCRAFT_ANIM_EXCLUDE_EQUIPS.indexOf(parseInt(data[j])) != -1) {
+				// skip
+			} else {
+				if (eq.type == LANDINGCRAFT) ship.haslandingcraft1 = true;
+				if (eq.type == LANDINGTANK) ship.haslandingcraft2 = true;
+			}
 			if (eq.atype && eq.atype != A_GUN) ship.hasAAgear = true;
 			if (eq.type == SEARCHLIGHTS || eq.type == SEARCHLIGHTL) ship.hassearchlight = true;
 			if (data[j]==42) ship.hasrepairteam = (ship.hasrepairteam)? ship.hasrepairteam+1 : 1;
