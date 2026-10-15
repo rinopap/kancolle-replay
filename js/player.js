@@ -378,10 +378,25 @@ var eventqueue = [];
 var battlestarts = [];
 var HPtotal1 = 0, HPtotal2 = 0, HPnow1 = 0, HPnow2 = 0;
 
-var LANDINGCRAFT_ANIM_EXCLUDE_SHIPS = [1556,1631,1632,1633,1650,1651,1652,2047,2048,2094,2095,2096,1889,1890,1891,1892,1893,1894,2091,2092,2093,2307,2308,2309,2234,2235,2236,1573,1613,2243,2244,2245,2246,1605,1606,1607,1608,1699,1700,1701,1702,1703,1704,2023,2024,2025,2027,2028,1587,1588,1589,1590,1581,1582];
+// Against these (installation) targets, landing craft attack animation is not used when the attacker's landing equipment is only these items
+var LANDINGCRAFT_ANIM_EXCLUDE_TARGETS = [1556,1631,1632,1633,1650,1651,1652,2047,2048,2094,2095,2096,1889,1890,1891,1892,1893,1894,2091,2092,2093,2307,2308,2309,2234,2235,2236,1573,1613,2243,2244,2245,2246,1605,1606,1607,1608,1699,1700,1701,1702,1703,1704,2023,2024,2025,2027,2028,1587,1588,1589,1590,1581,1582];
 var LANDINGCRAFT_ANIM_EXCLUDE_EQUIPS = [514,436,482,166,167,193];
+// returns 2 / 1 for landing tank / landing craft animation, 0 for none (normal shelling), taking the target-specific exceptions into account
+function getLandingCraftAnim(ship,target) {
+	if (!ship.landingEquips) return 0;
+	var excluded = target && LANDINGCRAFT_ANIM_EXCLUDE_TARGETS.indexOf(target.mstid) != -1;
+	var res = 0;
+	for (var k=0; k<ship.landingEquips.length; k++) {
+		var e = ship.landingEquips[k];
+		if (excluded && LANDINGCRAFT_ANIM_EXCLUDE_EQUIPS.indexOf(e[0]) != -1) continue;
+		if (e[1] == 2) return 2;
+		res = 1;
+	}
+	return res;
+}
 function createShip(data,side,i,damaged) {
 	var ship = new ShipG(i+((side==1)?10:0),side,parseInt(data[1]));
+	ship.mstid = parseInt(data[0]);
 	var graphic = new PIXI.Container();
 	var sdata = SHIPDATA[parseInt(data[0])];
 	if (!sdata) sdata = SHIPDATA[0];
@@ -427,14 +442,8 @@ function createShip(data,side,i,damaged) {
 			if (hasonlytorp == undefined && eq.type == TORPEDO) hasonlytorp = true;
 			if ([MAINGUNS,MAINGUNM,MAINGUNL].indexOf(eq.type) != -1) hasonlytorp = false;
 			if (eq.type == WG42) ship.hasWG = true;
-			// these ships don't get the landing craft attack animation from these items (normal shelling animation instead);
-			// any other landing craft equipment on the ship still triggers it
-			if (LANDINGCRAFT_ANIM_EXCLUDE_SHIPS.indexOf(parseInt(data[0])) != -1 && LANDINGCRAFT_ANIM_EXCLUDE_EQUIPS.indexOf(parseInt(data[j])) != -1) {
-				// skip
-			} else {
-				if (eq.type == LANDINGCRAFT) ship.haslandingcraft1 = true;
-				if (eq.type == LANDINGTANK) ship.haslandingcraft2 = true;
-			}
+			if (eq.type == LANDINGCRAFT) { ship.haslandingcraft1 = true; (ship.landingEquips = ship.landingEquips || []).push([parseInt(data[j]),1]); }
+			if (eq.type == LANDINGTANK) { ship.haslandingcraft2 = true; (ship.landingEquips = ship.landingEquips || []).push([parseInt(data[j]),2]); }
 			if (eq.atype && eq.atype != A_GUN) ship.hasAAgear = true;
 			if (eq.type == SEARCHLIGHTS || eq.type == SEARCHLIGHTL) ship.hassearchlight = true;
 			if (data[j]==42) ship.hasrepairteam = (ship.hasrepairteam)? ship.hasrepairteam+1 : 1;
@@ -1085,8 +1094,8 @@ function processAPI(root) {
 						}
 						else if (d[0].isCV) eventqueue.push([shootPlane,d,getState()]);
 						else if (d[1].isinstall) {
-							if (d[0].haslandingcraft2) { d.push(2); eventqueue.push([shootLandingCraft,d,getState()]); }
-							else if (d[0].haslandingcraft1) { d.push(1); eventqueue.push([shootLandingCraft,d,getState()]); }
+							var lcAnim = getLandingCraftAnim(d[0],d[1]);
+							if (lcAnim) { d.push(lcAnim); eventqueue.push([shootLandingCraft,d,getState()]); }
 							else if (d[0].hasWG) eventqueue.push([shootWG,d,getState()]);
 							else eventqueue.push([shoot,d,getState()]);
 						} else eventqueue.push([shoot,d,getState()]);
@@ -1194,8 +1203,8 @@ function processAPI(root) {
 					case 0:
 						if (d[0].isCV && (!d[0].nightgun || (hou.api_n_mother_list && hou.api_n_mother_list[j]))) eventqueue.push([shootPlane,d,getState()]);
 						else if (d[1].isinstall) {
-							if (d[0].haslandingcraft2) { d.push(2); eventqueue.push([shootLandingCraft,d,getState()]); }
-							else if (d[0].haslandingcraft1) { d.push(1); eventqueue.push([shootLandingCraft,d,getState()]); }
+							var lcAnim = getLandingCraftAnim(d[0],d[1]);
+							if (lcAnim) { d.push(lcAnim); eventqueue.push([shootLandingCraft,d,getState()]); }
 							else if (d[0].hasWG) eventqueue.push([shootWG,d,getState()]);
 							else eventqueue.push([shoot,d,getState()]);
 						} else if (d[1].issub) eventqueue.push([shootASW,d,getState()]);
