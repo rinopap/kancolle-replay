@@ -1,0 +1,67 @@
+name: Sync master data from upstream
+
+# Copies the data files (ships, equipment, maps, enemy comps, texts) and their image assets
+# from KC3Kai/kancolle-replay into this fork once a day. Code files are NOT touched.
+on:
+  schedule:
+    - cron: '17 19 * * *'   # 04:17 JST every day
+  workflow_dispatch:         # can also be run by hand from the Actions tab
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: sync-upstream-data
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/KC3Kai/kancolle-replay.git
+          git fetch --depth=1 upstream master
+
+      - name: Copy data files and assets from upstream
+        run: |
+          # master data (js/kcMAPNODES.js is fork-only and intentionally not listed)
+          git checkout upstream/master -- \
+            js/kcSHIPDATA.js js/kcEQDATA.js js/kcMAPDATA.js js/kcEDGES.js js/kcENEMYCOMP.js \
+            js/data/kcTEXTDATA_EN.js js/data/kcTEXTDATA_JP.js js/data/kcTEXTDATA_CN.js
+          # new images (ships, equipment, ...). Only adds/overwrites files that exist upstream; fork-only files such as assets/maps are kept.
+          git checkout upstream/master -- assets
+
+      - name: Validate that the data files still parse
+        run: |
+          for f in js/kcSHIPDATA.js js/kcEQDATA.js js/kcMAPDATA.js js/kcEDGES.js js/kcENEMYCOMP.js js/data/kcTEXTDATA_EN.js js/data/kcTEXTDATA_JP.js js/data/kcTEXTDATA_CN.js; do
+            node --check "$f"
+          done
+
+      - name: Commit and push if anything changed
+        id: commit
+        run: |
+          if git diff --cached --quiet; then
+            echo "No upstream data changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          UP=$(git rev-parse --short upstream/master)
+          git commit -m "sync: master data from upstream KC3Kai/kancolle-replay@${UP}"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Rebuild GitHub Pages
+        # pushes made with GITHUB_TOKEN do not always trigger a Pages build by themselves
+        if: steps.commit.outputs.changed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds"
