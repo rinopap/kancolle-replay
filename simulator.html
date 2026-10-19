@@ -651,6 +651,7 @@
 							<table class="multi">
 							<tr><th style="text-align:right">{{$t('rta_runs')}}</th><td>{{results.rta.runs}}</td></tr>
 							<tr><th style="text-align:right">{{$t('rta_avg_attempts')}}</th><td><span class="resultBold">{{results.rta.avg}}</span> (±{{results.rta.stddev}})</td></tr>
+							<tr><th style="text-align:right">{{$t('rta_first_day_s')}}</th><td><span class="resultBold">{{results.rta.firstDayS}}%</span></td></tr>
 							<tr v-show="results.rta.capped"><th style="text-align:right">{{$t('rta_capped')}}</th><td class="noteBold">{{results.rta.capped}}</td></tr>
 							<tr v-show="results.showTime"><th style="text-align:right">{{$t('rta_total_time')}}</th><td><span class="resultBold">{{$t('x_sec',[resultsTimeAll])}}</span> (±{{$t('x_sec',[resultsTimeStddevAll])}})</td></tr>
 							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_fastest_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.min])}}</td></tr>

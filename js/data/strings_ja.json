@@ -544,6 +544,7 @@
 	"rta_worst5_time": "下位5%(最遅側)の平均タイム",
 	"rta_p95_time": "p95タイム(遅い側5%の境界)",
 	"share_copy_manual": "自動コピーに失敗しました。下のURLを手動でコピーしてください:",
+	"rta_first_day_s": "一出撃目の昼Sで終了した確率",
 	"from_preset": "プリセットから",
 	"clear_all": "艦隊リセット",
 	"export_deckbuilder": "デッキビルダー出力",

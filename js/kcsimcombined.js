@@ -331,6 +331,7 @@ function simCombined(type,F1,F1C,F2,Fsupport,LBASwaves,doNB,NBonly,aironly,bombi
 	}
 	
 	var results = {};
+	results.rankDayEnd = getRank(ships1,ships2,ships1C);
 	if (noupdate) {
 		results.rankDay = getRank(ships1,ships2,ships1C);
 		results.mvpDay = F1.getMVP();
@@ -991,6 +992,7 @@ function sim6vs12(F1,F2,Fsupport,LBASwaves,doNB,NBonly,aironly,bombing,noammo,BA
 	}
 	
 	var results = {};
+	results.rankDayEnd = getRank(ships1,ships2.concat(ships2C));
 	if (noupdate) {
 		results.rankDay = getRank(ships1,ships2.concat(ships2C));
 		results.mvpDay = F1.getMVP();
@@ -1473,6 +1475,7 @@ function sim12vs12(type,F1,F1C,F2,Fsupport,LBASwaves,doNB,NBonly,aironly,bombing
 	}
 	
 	var results = {};
+	results.rankDayEnd = getRank(ships1,ships2.concat(ships2C),ships1C);
 	if (noupdate) {
 		results.rankDay = getRank(ships1,ships2.concat(ships2C),ships1C);
 		results.mvpDay = F1.getMVP();

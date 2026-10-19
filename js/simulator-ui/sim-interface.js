@@ -114,7 +114,7 @@ var SIM = {
 			totalUnderway: 0,
 			totalCanAdvanceAfter: 0,
 			nodes: [],
-			rta: { runs: 0, attempts: 0, capped: 0, sumSq: 0, histogram: {} },
+			rta: { runs: 0, attempts: 0, capped: 0, sumSq: 0, firstDayS: 0, histogram: {} },
 			time: {
 				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, minTime: null, maxTime: null, minTimeBucket: null, maxTimeBucket: null, samples: [], samplesBucket: [], animations: {}, histogram: {}, histogramBucket: {} },
 				completed: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
@@ -1238,6 +1238,9 @@ var SIM = {
 		r.sumSq += attempts*attempts;
 		if (!success) r.capped++;
 		r.histogram[attempts] = (r.histogram[attempts] || 0) + 1;
+		// finished on the first sortie by taking S at the boss in the day battle (night battle not needed)
+		let nodeLast = dataInput.nodes[dataInput.nodes.length-1];
+		if (attempts == 1 && success && !nodeLast.NBOnly && this.simResultPrev && this.simResultPrev.result.rankDayEnd == 'S') r.firstDayS = (r.firstDayS || 0) + 1;
 		if (rta.replayBase) {
 			let replay = Object.assign({},rta.replayBase,{ battles: rta.battles });
 			let resultsTime = COMMON.TIME_BATTLE.getTimeStats(replay,{ expCut: !!dataInput.timeExpCut });

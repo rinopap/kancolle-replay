@@ -3849,6 +3849,7 @@ function sim(F1,F2,Fsupport,LBASwaves,doNB,NBonly,aironly,bombing,noammo,BAPI,no
 	}
 	
 	var results = {};
+	results.rankDayEnd = getRank(ships1,ships2); // rank at the end of the day battle (before any night battle)
 	if (noupdate) {
 		results.rankDay = getRank(ships1,ships2);
 		results.mvpDay = F1.getMVP();

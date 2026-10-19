@@ -249,7 +249,7 @@ var UI_MAIN = Vue.createApp({
 			fuelHP: 0, ammoHP: 0, steelHP: 0, bauxHP: 0, bucketHP: 0, dameconHP: 0, underwayHP: 0,
 			fuelTP: 0, ammoTP: 0, steelTP: 0, bauxTP: 0, bucketTP: 0, dameconTP: 0, underwayTP: 0,
 			perHPRes: 1, perTPRes: 1,
-			rta: { active: false, runs: 0, attempts: 0, avg: 0, stddev: 0, capped: 0, dist: [] },
+			rta: { active: false, runs: 0, attempts: 0, avg: 0, stddev: 0, capped: 0, firstDayS: 0, dist: [] },
 			showTime: false,
 			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0, _minAllBasic: null, _maxAllBasic: null, _minAllBucket: null, _maxAllBucket: null, _samplesAll: [], _samplesAllBucket: [] },
 			timeIncludeBucket: false,
@@ -468,6 +468,7 @@ var UI_MAIN = Vue.createApp({
 				);
 			}
 			defs.push(
+				{ key: 'rtaFirstDayS', label: 'rta_first_day_s', dir: 1, suffix: '%' },
 				{ key: 'time', label: 'average_time', dir: -1 },
 				{ key: 'timeStddev', label: 'stddev_time', dir: 0 },
 				{ key: 'timeMin', label: 'rta_fastest_time', dir: -1 },
@@ -1086,6 +1087,7 @@ var UI_MAIN = Vue.createApp({
 				time: null, timeStddev: null,
 				rta: !!r.rta.active,
 				timeMin: null, timeP05: null, timeP95: null, timeMax: null, timeWorst5: null,
+				rtaFirstDayS: r.rta.active ? r.rta.firstDayS : null,
 				timeHist: null,
 			};
 			if (r.showTime) {
@@ -1409,6 +1411,7 @@ var UI_MAIN = Vue.createApp({
 				this.results.rta.avg = formatNum(mean);
 				this.results.rta.stddev = formatNum(Math.sqrt(Math.max(0,rtaRes.sumSq/runs - mean*mean)));
 				this.results.rta.capped = rtaRes.capped || 0;
+				this.results.rta.firstDayS = Math.round(1000*(rtaRes.firstDayS || 0)/runs)/10;
 				let hist = rtaRes.histogram || {}, keys = Object.keys(hist).map(k => +k).sort((a,b) => a-b);
 				let maxRows = 12, dist = [], cum = 0, maxCount = 0;
 				for (let k of keys) {
