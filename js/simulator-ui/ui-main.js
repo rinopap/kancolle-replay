@@ -71,6 +71,9 @@ var UNDO_DEBOUNCE_MS = 700;
 // intentionally left out of undo/redo for now
 var UNDO_WATCH_KEYS = SIM_SLOT_PLAYER_KEYS;
 
+// percentile results per (frozen) samples array, so switching slots does not re-sort 100k+ values
+var TIME_TAIL_CACHE = new WeakMap();
+
 var UI_MAIN = Vue.createApp({
 	data: () => ({
 		fleetFMain: FLEET_MODEL.getBlankFleet({ isPlayer: 1 }),
@@ -482,7 +485,7 @@ var UI_MAIN = Vue.createApp({
 				let sm = Object.assign({},c.summary), h = sm.timeHist;
 				if (h && sm.rta) {
 					let mn = withBucket ? h.minBucket : h.minBasic, mx = withBucket ? h.maxBucket : h.maxBasic;
-					let tail = this._timeTail(withBucket ? h.samplesBucket : h.samples);
+					let tail = withBucket ? h.tailBucket : h.tailBasic;
 					sm.timeMin = Math.round(1000*mn)/1000; sm.timeMax = Math.round(1000*mx)/1000;
 					sm.timeP05 = tail.p05; sm.timeP95 = tail.p95; sm.timeWorst5 = tail.worst5;
 				}
@@ -737,11 +740,15 @@ var UI_MAIN = Vue.createApp({
 		// exact p05 (5th percentile, nearest-rank) and the mean of the slowest 5% of runs, from the per-run times
 		_timeTail: function(samples) {
 			if (!samples || !samples.length) return { p05: null, p95: null, worst5: null };
+			let cached = TIME_TAIL_CACHE.get(samples);
+			if (cached) return cached;
 			let sorted = samples.slice().sort((x,y) => x-y);
 			let n5 = Math.max(1,Math.ceil(sorted.length*0.05));
 			let worst = sorted.slice(-n5);
 			let round3 = v => Math.round(1000*v)/1000;
-			return { p05: round3(sorted[n5-1]), p95: round3(sorted[Math.max(0,Math.ceil(sorted.length*0.95)-1)]), worst5: round3(worst.reduce((x,y) => x+y,0)/worst.length) };
+			let res = { p05: round3(sorted[n5-1]), p95: round3(sorted[Math.max(0,Math.ceil(sorted.length*0.95)-1)]), worst5: round3(worst.reduce((x,y) => x+y,0)/worst.length) };
+			if (Object.isFrozen(samples)) TIME_TAIL_CACHE.set(samples,res);
+			return res;
 		},
 		_binHistogram: function(hist,totalNum,binning) {
 			let bars = [];
@@ -1071,9 +1078,18 @@ var UI_MAIN = Vue.createApp({
 		_saveActiveSlot: function() {
 			let slot = this.simSlots[this.simSlotActive];
 			slot.save = this._snapshotSlotSave();
-			slot.results = this.results.active ? JSON.parse(JSON.stringify(this.results)) : null;
+			slot.results = this.results.active ? this._cloneResults() : null;
 			slot.undoStack = this.undoStack;
 			slot.redoStack = this.redoStack;
+		},
+		// deep copy of the results; the (frozen) per-run sample arrays are shared by reference instead of copied
+		_cloneResults: function() {
+			let res = JSON.parse(JSON.stringify(this.results,(k,v) => k.startsWith('_samples') ? undefined : v));
+			if (res.time) {
+				res.time._samplesAll = this.results.time._samplesAll;
+				res.time._samplesAllBucket = this.results.time._samplesAllBucket;
+			}
+			return res;
 		},
 		_captureSlotSummary: function() {
 			let r = this.results;
@@ -1094,7 +1110,7 @@ var UI_MAIN = Vue.createApp({
 				let t = r.time;
 				summary.timeHist = {
 					num: t._histogramNumAll,
-					samples: t._samplesAll.slice(), samplesBucket: t._samplesAllBucket.slice(),
+					tailBasic: this._timeTail(t._samplesAll), tailBucket: this._timeTail(t._samplesAllBucket),
 					basic: Object.assign({},t._histogramAll), bucket: Object.assign({},t._histogramAllBucket),
 					minBasic: t._minAllBasic, maxBasic: t._maxAllBasic, minBucket: t._minAllBucket, maxBucket: t._maxAllBucket,
 				};
@@ -1458,8 +1474,9 @@ var UI_MAIN = Vue.createApp({
 				this.results.time._histogramAll = resultSim.time.all.histogram || {};
 				this.results.time._histogramAllBucket = resultSim.time.all.histogramBucket || {};
 				this.results.time._histogramNumAll = resultSim.time.all.num;
-				this.results.time._samplesAll = resultSim.time.all.samples || [];
-				this.results.time._samplesAllBucket = resultSim.time.all.samplesBucket || [];
+				// frozen so Vue does not wrap 100k+ numbers in reactive proxies (slow slot switching / copying)
+				this.results.time._samplesAll = Object.freeze(resultSim.time.all.samples || []);
+				this.results.time._samplesAllBucket = Object.freeze(resultSim.time.all.samplesBucket || []);
 				this.results.time._minAllBasic = resultSim.time.all.minTime;
 				this.results.time._maxAllBasic = resultSim.time.all.maxTime;
 				this.results.time._minAllBucket = resultSim.time.all.minTimeBucket;
