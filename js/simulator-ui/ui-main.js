@@ -2740,6 +2740,7 @@ var UI_BACKUP = Vue.createApp({
 		shareURLLoading: false,
 		showShareURLCopied: false,
 		showShareURLError: false,
+		showShareURLManual: false,
 		shareURL: '',
 		
 		callback: null,
@@ -2759,6 +2760,7 @@ var UI_BACKUP = Vue.createApp({
 			this.shareURLLoading = false;
 			this.showShareURLCopied = false;
 			this.showShareURLError = false;
+			this.showShareURLManual = false;
 		},
 		
 		onclickDownload: function() {
@@ -2847,7 +2849,31 @@ var UI_BACKUP = Vue.createApp({
 				this.showShareURLError = true;
 			});
 		},
-		_shareURLKCRDB: function(strSim) {
+		// Copy text to the clipboard. The async clipboard API is refused when called long after the click (the fetch below takes time),
+		// so fall back to execCommand, and report failure so the URL can be shown for manual copy.
+		_copyText: async function(txt) {
+			try {
+				if (navigator.clipboard && navigator.clipboard.writeText) {
+					await navigator.clipboard.writeText(txt);
+					return true;
+				}
+			} catch (e) { console.log(e); }
+			try {
+				let ta = document.createElement('textarea');
+				ta.value = txt;
+				ta.setAttribute('readonly','');
+				ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+				document.body.appendChild(ta);
+				ta.focus();
+				ta.select();
+				ta.setSelectionRange(0,txt.length);
+				let ok = document.execCommand('copy');
+				document.body.removeChild(ta);
+				return !!ok;
+			} catch (e) { console.log(e); }
+			return false;
+		},
+		_shareURLKCRDB: function(strSim,clipPromise) {
 			fetch('https://kcrdb.hitomaru.dev/simulators', {
 				method: 'POST',
 				headers: {
@@ -2860,26 +2886,56 @@ var UI_BACKUP = Vue.createApp({
 				let txt = await res.text();
 				if (!res.ok) {
 					throw new Error('kcrdb: ' + txt);
-					return;
 				}
 				let data = JSON.parse(txt);
 				let url = window.location.origin + window.location.pathname.replace(/[^/]*$/,'') + '?s=' + data.id;
-				navigator.clipboard.writeText(url);
 				console.log(url);
 				this.shareURL = url;
-				this.showShareURLCopied = true;
+				let copied = false;
+				if (clipPromise) {
+					// the clipboard write was started inside the click, resolve it with the URL
+					clipPromise.resolve(url);
+					try { await clipPromise.written; copied = true; } catch (e) { console.log(e); }
+				}
+				if (!copied) copied = await this._copyText(url);
+				this.showShareURLCopied = copied;
+				this.showShareURLManual = !copied;
 				this.showShareURLError = false;
+				this.shareURLLoading = false;
 			}).catch(error => {
 				console.log(error);
+				if (clipPromise) clipPromise.reject(error);
 				this.showShareURLCopied = false;
+				this.showShareURLManual = false;
 				this.showShareURLError = true;
+				this.shareURLLoading = false;
 			});
 		},
 		onclickShareURL: function() {
 			this.shareURLLoading = true;
-			LZMA.compress(JSON.stringify(UI_MAIN.uiToSaveWithSlots()), 9, (ab) => {
-				this._shareURLKCRDB(COMMON.arrayBufferToBase64(ab));
-			});
+			this.showShareURLCopied = false;
+			this.showShareURLManual = false;
+			this.showShareURLError = false;
+			// start a deferred clipboard write right now, while the click's user activation is still valid
+			let clipPromise = null;
+			try {
+				if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+					clipPromise = {};
+					let p = new Promise((resolve,reject) => { clipPromise.resolve = resolve; clipPromise.reject = reject; });
+					clipPromise.written = navigator.clipboard.write([new ClipboardItem({ 'text/plain': p.then(u => new Blob([u],{ type: 'text/plain' })) })]);
+					clipPromise.written.catch(() => {});
+				}
+			} catch (e) { console.log(e); clipPromise = null; }
+			try {
+				LZMA.compress(JSON.stringify(UI_MAIN.uiToSaveWithSlots()), 9, (ab) => {
+					this._shareURLKCRDB(COMMON.arrayBufferToBase64(ab),clipPromise);
+				});
+			} catch (e) {
+				console.log(e);
+				if (clipPromise) clipPromise.reject(e);
+				this.showShareURLError = true;
+				this.shareURLLoading = false;
+			}
 		},
 	},
 }).component('vmodal',COMMON.CMP_MODAL).use(COMMON.i18n).mount('#divSimBackup');

@@ -1880,6 +1880,7 @@
 					<span class="note">&nbsp;{{$t('share_includes_slots')}}</span>
 					<span v-show="showShareURLCopied">&nbsp;<a :href="shareURL" target="_blank">{{$t('copied_to_clipboard')}}</a></span>
 					<span class="error" v-show="showShareURLError">&nbsp;{{$t('error')}}</span>
+					<div v-show="showShareURLManual" style="margin-top:4px"><span class="note">{{$t('share_copy_manual')}}</span><br><input type="text" readonly :value="shareURL" style="width:100%;max-width:480px" onfocus="this.select()"/></div>
 				</div>
 				<div v-show="!isReplayImport">
 					<hr>

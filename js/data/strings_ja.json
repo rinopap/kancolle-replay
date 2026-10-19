@@ -543,6 +543,7 @@
 	"rta_p05_time": "p05タイム(上位5%の境界)",
 	"rta_worst5_time": "下位5%(最遅側)の平均タイム",
 	"rta_p95_time": "p95タイム(遅い側5%の境界)",
+	"share_copy_manual": "自動コピーに失敗しました。下のURLを手動でコピーしてください:",
 	"from_preset": "プリセットから",
 	"clear_all": "艦隊リセット",
 	"export_deckbuilder": "デッキビルダー出力",

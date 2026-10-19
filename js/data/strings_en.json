@@ -543,6 +543,7 @@
 	"rta_p05_time": "p05 time (5th percentile)",
 	"rta_worst5_time": "Mean of slowest 5%",
 	"rta_p95_time": "p95 time (95th percentile)",
+	"share_copy_manual": "Could not copy automatically. Copy the URL below manually:",
 	"from_preset": "From preset",
 	"clear_all": "Clear All",
 	"export_deckbuilder": "Export DeckBuilder",
