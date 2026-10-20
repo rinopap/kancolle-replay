@@ -936,11 +936,11 @@ var UI_MAIN = Vue.createApp({
 		},
 		setRoutePos: function(id,x,y) {
 			x = Math.max(36,x); y = Math.max(30,y);
+			if (id == 'start') { this.startRoute.x = x; this.startRoute.y = y; return; }
+			let stray = this._routeStray(id);
+			if (stray) { stray.x = x; stray.y = y; return; }
 			let tgt = this._routeSrc(id);
-			if (!tgt) return;
-			if (id == 'start') { this.startRoute.x = x; this.startRoute.y = y; }
-			else if (this._routeStray(id)) { let s = this._routeStray(id); s.x = x; s.y = y; }
-			else { tgt.routeX = x; tgt.routeY = y; }
+			if (tgt) { tgt.routeX = x; tgt.routeY = y; }
 		},
 		onRouteUp: function(ev) {
 			let d = this._routeDrag;
