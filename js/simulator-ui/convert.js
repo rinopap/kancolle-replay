@@ -846,6 +846,8 @@ window.CONVERT = {
 	uiToSimInput: function(dataUI) {
 		let nodeIdToNum = {};
 		for (let i=0; i<dataUI.battles.length; i++) nodeIdToNum[dataUI.battles[i].id] = i+1;
+		// blank stray cells: a branch to one ends the sortie there (targetInd -1)
+		let strayIds = new Set(((dataUI.startRoute || {}).strays || []).map(s => s.id));
 		let dataInput = {
 			numSims: dataUI.numSim,
 			numSimThread: dataUI.useSimThread ? dataUI.numSimThread : null,
@@ -856,7 +858,7 @@ window.CONVERT = {
 			fleetFriendComps: dataUI.useFF ? this.uiToSimInputComps(dataUI.fleetsFFriend) : null,
 			nodes: [],
 			startNextOff: !!(dataUI.startRoute && dataUI.startRoute.nextOff),
-			startBranches: (dataUI.startBranches || []).filter(br => nodeIdToNum[br.targetId]).map(br => ({ targetInd: nodeIdToNum[br.targetId]-1, rate: +br.rate || 0 })),
+			startBranches: (dataUI.startBranches || []).filter(br => nodeIdToNum[br.targetId] || strayIds.has(br.targetId)).map(br => ({ targetInd: strayIds.has(br.targetId) ? -1 : nodeIdToNum[br.targetId]-1, rate: +br.rate || 0 })),
 			continueOnTaiha: !dataUI.settings.retreatOnTaiha,
 			dameconNumTaiha: dataUI.settings.dameconNumTaiha,
 			retreatOnChuuhaIfAll: dataUI.settings.retreatOnChuuhaIfAll,
@@ -895,10 +897,11 @@ window.CONVERT = {
 				offrouteRate: battleUI.offrouteRate/100,
 			};
 			if (battleUI.nextOff) nodeInput.nextOff = true;
+			if (battleUI.isStray && battleUI.id != dataUI.battles[dataUI.battles.length-1].id) nodeInput.isStray = true; // sortie ends (retreat) after this battle
 			if (battleUI.branches && battleUI.branches.length) {
 				nodeInput.branches = battleUI.branches
-					.filter(br => nodeIdToNum[br.targetId])
-					.map(br => ({ targetInd: nodeIdToNum[br.targetId]-1, rate: +br.rate || 0 }));
+					.filter(br => nodeIdToNum[br.targetId] || strayIds.has(br.targetId))
+					.map(br => ({ targetInd: strayIds.has(br.targetId) ? -1 : nodeIdToNum[br.targetId]-1, rate: +br.rate || 0 }));
 			}
 			if (battleUI.doNBCond) nodeInput.doNBCond = battleUI.doNBCond;
 			if (+battleUI.forceEngagement) nodeInput.forceEngagement = +battleUI.forceEngagement;

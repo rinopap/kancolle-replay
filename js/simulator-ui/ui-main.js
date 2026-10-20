@@ -514,10 +514,18 @@ var UI_MAIN = Vue.createApp({
 			let st = this.startRoute;
 			let nodes = [{ id: 'start', ind: -1, x: st.x != null ? st.x : 70, y: st.y != null ? st.y : 130 }];
 			this.battles.forEach((bt,i) => nodes.push({
-				id: bt.id, ind: i,
+				id: bt.id, ind: i, vi: i+1,
 				x: bt.routeX != null ? bt.routeX : 70+(i+1)*110,
 				y: bt.routeY != null ? bt.routeY : 130,
+				strayBattle: !!bt.isStray && i < this.battles.length-1,
 			}));
+			// blank "stray" cells (no battle): reaching one ends the sortie
+			(st.strays || []).forEach((s,k) => nodes.push({
+				id: s.id, ind: -2, vi: this.battles.length+1+k, stray: true,
+				x: s.x != null ? s.x : 200+k*110,
+				y: s.y != null ? s.y : 250,
+			}));
+			nodes[0].vi = 0;
 			return nodes;
 		},
 		routeSize: function() {
@@ -527,7 +535,11 @@ var UI_MAIN = Vue.createApp({
 		},
 		routeSources: function() {
 			let src = [{ id: 'start', branches: this.startBranches, nextOff: !!this.startRoute.nextOff }];
-			for (let bt of this.battles) src.push({ id: bt.id, branches: bt.branches || [], nextOff: !!bt.nextOff });
+			this.battles.forEach((bt,i) => {
+				let isStray = !!bt.isStray && i < this.battles.length-1; // a stray battle node ends the sortie: no outgoing arrows
+				src.push({ id: bt.id, branches: isStray ? [] : (bt.branches || []), nextOff: isStray ? true : !!bt.nextOff });
+			});
+			for (let s of (this.startRoute.strays || [])) src.push({ id: s.id, branches: [], nextOff: true });
 			return src;
 		},
 		// effective percent for each outgoing edge of a source: [{kind,bi,to(layout idx),pct}]
@@ -545,7 +557,7 @@ var UI_MAIN = Vue.createApp({
 				});
 				if (sr.nextOff) {
 					for (let o of out) o.pct = used > 0 ? o.raw/used*100 : 0;
-				} else if (i < n-1) {
+				} else if (i < this.battles.length) {
 					out.push({ kind: 'n', bi: -1, to: i+1, raw: Math.max(0,100-used), pct: Math.max(0,100-used) });
 				}
 				return out;
@@ -786,6 +798,7 @@ var UI_MAIN = Vue.createApp({
 				forceEngagement: 0,
 				branches: [],
 				nextOff: false,
+				isStray: false,
 				routeX: null,
 				routeY: null,
 					
@@ -845,6 +858,46 @@ var UI_MAIN = Vue.createApp({
 			if (this.routeSelected == 'start') return { id: 'start', branches: this.startBranches, nextOff: !!this.startRoute.nextOff };
 			return this.battles.find(bt => bt.id == this.routeSelected) || null;
 		},
+		_routeStray: function(id) {
+			return (this.startRoute.strays || []).find(s => s.id == id) || null;
+		},
+		routeIsStrayBlank: function(id) {
+			return !!this._routeStray(id);
+		},
+		routeIsStrayBattle: function(id) {
+			let i = this.battles.findIndex(bt => bt.id == id);
+			return i >= 0 && !!this.battles[i].isStray && i < this.battles.length-1;
+		},
+		routeSelStray: function() {
+			return this._routeStray(this.routeSelected);
+		},
+		addStrayNode: function() {
+			if (!this.startRoute.strays) this.startRoute.strays = [];
+			let n = 1;
+			while (this.startRoute.strays.find(s => s.id == 'stray'+n)) n++;
+			let s = { id: 'stray'+n, x: null, y: null };
+			this.startRoute.strays.push(s);
+			this.routeSelected = s.id;
+			this.routeEdgeSel = null;
+		},
+		deleteStrayNode: function(id) {
+			let list = this.startRoute.strays || [];
+			let k = list.findIndex(s => s.id == id);
+			if (k < 0) return;
+			list.splice(k,1);
+			this.startBranches = this.startBranches.filter(br => br.targetId != id);
+			for (let b of this.battles) {
+				if (b.branches && b.branches.length) b.branches = b.branches.filter(br => br.targetId != id);
+			}
+			if (this.routeSelected == id) this.routeSelected = 0;
+			this.routeEdgeSel = null;
+		},
+		// all nodes a branch can point to (battle nodes + blank stray cells), excluding fromId
+		routeTargetOptions: function(fromId) {
+			let opts = this.battles.filter(b => b.id != fromId).map(b => ({ id: b.id, label: this.routeNodeLabel(b.id) }));
+			for (let s of (this.startRoute.strays || [])) opts.push({ id: s.id, label: this.routeNodeLabel(s.id) });
+			return opts;
+		},
 		_routeSrc: function(id) {
 			return id == 'start' ? this.startRoute : this.battles.find(bt => bt.id == id);
 		},
@@ -886,6 +939,7 @@ var UI_MAIN = Vue.createApp({
 			let tgt = this._routeSrc(id);
 			if (!tgt) return;
 			if (id == 'start') { this.startRoute.x = x; this.startRoute.y = y; }
+			else if (this._routeStray(id)) { let s = this._routeStray(id); s.x = x; s.y = y; }
 			else { tgt.routeX = x; tgt.routeY = y; }
 		},
 		onRouteUp: function(ev) {
@@ -998,22 +1052,28 @@ var UI_MAIN = Vue.createApp({
 				sr.route.nextOff = true;
 			}
 			let moved = this.battles.splice(from,1)[0];
+			moved.isStray = false;
 			this.battles.push(moved);
 			this.battles.forEach((bt,i) => { bt.ind = i; });
 		},
 		routeResetLayout: function() {
 			this.startRoute.x = null; this.startRoute.y = null;
+			for (let s of (this.startRoute.strays || [])) { s.x = null; s.y = null; }
 			for (let bt of this.battles) { bt.routeX = null; bt.routeY = null; }
 		},
 		onclickRouteClear: function() {
 			this.startBranches = [];
 			this.startRoute.nextOff = false;
-			for (let bt of this.battles) { bt.branches = []; bt.nextOff = false; }
+			for (let bt of this.battles) { bt.branches = []; bt.nextOff = false; bt.isStray = false; }
+			this.startRoute.strays = [];
+			if (this._routeStray(this.routeSelected)) this.routeSelected = 0;
 			this.routeAdding = false;
 			this.routeEdgeSel = null;
 		},
 		routeNodeLabel: function(id) {
 			if (id == 'start') return this.$t('start_node');
+			let k = (this.startRoute.strays || []).findIndex(s => s.id == id);
+			if (k >= 0) return this.$t('route_stray_blank_n',[k+1]);
 			return this.$t('node_n',[this.battles.findIndex(b => b.id == id)+1]);
 		},
 		routePct: function(v) {
@@ -1059,7 +1119,7 @@ var UI_MAIN = Vue.createApp({
 			b.subOnly = false; b.useNormalSupport = 0;
 			b.useBalloon = false; b.useAtoll = false; b.useSmoke = false; b.useAnchorageRepair = false;
 			b.offrouteRate = 0; b.forceEngagement = 0;
-			b.branches = []; b.nextOff = false; b.routeX = null; b.routeY = null;
+			b.branches = []; b.nextOff = false; b.isStray = false; b.routeX = null; b.routeY = null;
 			b.enemyComps = [];
 			this.addNewComp(b.enemyComps,{ isEnemy: 1 });
 		},
@@ -2084,7 +2144,9 @@ ${t('results.buckets')}:	${this.resultsBucketTPPer}`;
 			this.battle.branches.splice(ind,1);
 		},
 		branchTargetOptions: function() {
-			return UI_MAIN.battles.filter(b => b.id != this.battle.id).map(b => ({ id: b.id, label: this.$t('node_n',[UI_MAIN.battles.indexOf(b)+1]) }));
+			let opts = UI_MAIN.battles.filter(b => b.id != this.battle.id).map(b => ({ id: b.id, label: this.$t('node_n',[UI_MAIN.battles.indexOf(b)+1]) }));
+			for (let s of (UI_MAIN.startRoute.strays || [])) opts.push({ id: s.id, label: UI_MAIN.routeNodeLabel(s.id) });
+			return opts;
 		},
 		branchRateTotal: function() {
 			return this.battle.branches.reduce((a,br) => a+(+br.rate||0),0);

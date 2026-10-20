@@ -279,10 +279,12 @@ var SIM = {
 				// RTA run in progress: collect this attempt's battles; time is computed once for the whole run
 				this._rtaState.numBuckets += numBuckets;
 				this._rtaState.replayBase = this._results.replay;
+				if (this._strayBlankLast) this._rtaState.numStrayBlank = (this._rtaState.numStrayBlank || 0) + 1;
 				for (let b of this._results.replay.battles) this._rtaState.battles.push(b);
 			} else {
 				let resultsTime = COMMON.TIME_BATTLE.getTimeStats(this._results.replay,{ expCut: !!dataInput.timeExpCut });
 				resultsTime.battles = this._foldByNode(resultsTime,this._results.replay.battles);
+				if (this._strayBlankLast) resultsTime.time += COMMON.TIME_BATTLE.STRAY_BLANK_TIME;
 				this._recordTime(resultsTime,numBuckets,!!(this.simResultPrev && this.simResultPrev.battleNum == dataInput.nodes.length));
 			}
 			this._results.replay.battles = [];
@@ -966,8 +968,11 @@ var SIM = {
 			}
 			return defInd;
 		};
+		this.simResultPrev = null; // a sortie that ends on a blank stray cell fights nothing: don't inherit the last sortie's result
+		let strayBlank = false;
 		battleInd = pickNext(dataInput.startBranches,dataInput.startNextOff,0);
-		if (battleInd >= dataInput.nodes.length) battleInd = 0; // a Start node with no way out falls back to the first node
+		if (battleInd < 0) { strayBlank = true; battleInd = dataInput.nodes.length; } // Start leads to a blank stray cell
+		else if (battleInd >= dataInput.nodes.length) battleInd = 0; // a Start node with no way out falls back to the first node
 		let _branchSafety = 0;
 		while (battleInd<dataInput.nodes.length) {
 			if (++_branchSafety > 50) break; // guard against a misconfigured branch looping back on itself
@@ -1143,13 +1148,16 @@ var SIM = {
 			
 			for (let ship of shipsAll) delete ship._tempFCF;
 			if (isRetreat) break;
+			if (node.isStray) break; // stray battle node: the sortie ends (retreat) after this battle
 			
 			// route branching: with no branches configured this always just continues to
 			// battleInd+1 (identical to the old fixed for-loop); the final node in dataInput.nodes
 			// is always the boss/destination for every possible resolved path, so isBossNode and
 			// the end-of-sortie checks elsewhere (battleNum == dataInput.nodes.length) still hold
 			battleInd = pickNext(node.branches,node.nextOff,battleInd+1);
+			if (battleInd < 0) { strayBlank = true; break; } // moved onto a blank stray cell: retreat
 		}
+		this._strayBlankLast = strayBlank;
 		
 		if (includeResults) {
 			this._results.replay = dataReplay;
@@ -1247,6 +1255,7 @@ var SIM = {
 			resultsTime.battles = this._foldByNode(resultsTime,rta.battles);
 			// time spent between sorties (returning to port, resupply, sortie select): user supplied
 			resultsTime.time += (attempts-1)*(+dataInput.rtaResortieTime || 0);
+			resultsTime.time += (rta.numStrayBlank || 0)*COMMON.TIME_BATTLE.STRAY_BLANK_TIME; // blank stray cells reached
 			this._recordTime(resultsTime,rta.numBuckets,success);
 		}
 	},

@@ -823,6 +823,9 @@ div.scrollAnchor > div {
 .routeNode .routeNodeVisit { font-size: 11px; fill: #777; }
 .routePanel { margin: 6px 0; }
 .routeNode.start rect { fill: #E8F6E8; stroke: #44AA55; }
+.routeNode.stray rect { fill: #EFEFEF; stroke: #888; stroke-dasharray: 5 3; }
+.routeNode.strayBattle rect { fill: #FFF1DD; stroke: #DD8800; stroke-dasharray: 5 3; }
+.routeNode.sel.stray rect, .routeNode.sel.strayBattle rect { stroke: #DD6600; stroke-width: 3; }
 
 .routeSvg { touch-action: none; user-select: none; -webkit-user-select: none; }
 .routeSvg.adding { cursor: crosshair; }

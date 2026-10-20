@@ -182,10 +182,10 @@
 							<text :x="e.lx" :y="e.ly" text-anchor="middle">{{e.rate}}%</text>
 						</g>
 						<line v-if="routeAdding && routeCursor && routeNodes.find(n => n.id == routeSelected)" class="routeRubber" :x1="routeNodes.find(n => n.id == routeSelected).x" :y1="routeNodes.find(n => n.id == routeSelected).y" :x2="routeCursor.x" :y2="routeCursor.y"/>
-						<g v-for="n in routeNodes" :key="n.id" class="routeNode" :class="{sel:n.id==routeSelected,target:routeAdding&&n.id!=routeSelected&&n.id!='start',boss:n.ind==battles.length-1,start:n.ind==-1,moving:routeDragging==n.id}" @pointerdown.stop.prevent="onRouteNodeDown(n,$event)">
+						<g v-for="n in routeNodes" :key="n.id" class="routeNode" :class="{sel:n.id==routeSelected,target:routeAdding&&n.id!=routeSelected&&n.id!='start',boss:n.ind==battles.length-1,start:n.ind==-1,moving:routeDragging==n.id,stray:n.stray,strayBattle:n.strayBattle}" @pointerdown.stop.prevent="onRouteNodeDown(n,$event)">
 							<rect :x="n.x-32" :y="n.y-22" width="64" height="44" rx="8"/>
-							<text :x="n.x" :y="n.y-3" text-anchor="middle" class="routeNodeName">{{n.ind==-1 ? 'Start' : (n.ind==battles.length-1 ? 'Boss' : n.ind+1)}}</text>
-							<text :x="n.x" :y="n.y+14" text-anchor="middle" class="routeNodeVisit">{{n.ind==-1 ? '' : routePct(routeVisits[n.ind+1])+'%'}}</text>
+							<text :x="n.x" :y="n.y-3" text-anchor="middle" class="routeNodeName">{{n.ind==-1 ? 'Start' : (n.stray ? $t('route_stray_short') : (n.ind==battles.length-1 ? 'Boss' : n.ind+1))}}</text>
+							<text :x="n.x" :y="n.y+14" text-anchor="middle" class="routeNodeVisit">{{n.ind==-1 ? '' : routePct(routeVisits[n.vi])+'%'}}</text>
 						</g>
 					</svg>
 				</div>
@@ -193,16 +193,16 @@
 					<div><span class="header">{{routeNodeLabel(routeSelBattle().id)}}</span></div>
 					<div v-for="(br,bi) in routeSelBattle().branches" class="branchRow" :class="{selEdge:routeEdgeSel==routeSelected+'|b|'+bi}">
 						&rarr; <select v-model="br.targetId">
-							<option v-for="b in battles.filter(x => x.id != routeSelected)" :value="b.id">{{routeNodeLabel(b.id)}}</option>
+							<option v-for="o in routeTargetOptions(routeSelected)" :value="o.id">{{o.label}}</option>
 						</select>
 						<input type="number" min="0" max="100" v-model.number="br.rate"/>%
 						<a href="#" @click.prevent="deleteRouteEdge(routeSelected+'|b|'+bi)">&#10006;</a>
 					</div>
-					<div class="branchRow" v-if="routeHasNext(routeSelected) && !routeNextOff(routeSelected)" :class="{selEdge:routeEdgeSel==routeSelected+'|n'}">
+					<div class="branchRow" v-if="!routeIsStrayBattle(routeSelected) && routeHasNext(routeSelected) && !routeNextOff(routeSelected)" :class="{selEdge:routeEdgeSel==routeSelected+'|n'}">
 						&rarr; {{routeNextLabel(routeSelected)}} <span class="note">({{$t('route_default_next',[routeNextRemainder(routeSelected)])}})</span>
 						<a href="#" @click.prevent="deleteRouteEdge(routeSelected+'|n')">&#10006;</a>
 					</div>
-					<div v-if="routeHasNext(routeSelected) && routeNextOff(routeSelected)" class="note">
+					<div v-if="!routeIsStrayBattle(routeSelected) && routeHasNext(routeSelected) && routeNextOff(routeSelected)" class="note">
 						{{$t('route_default_removed')}} <a href="#" @click.prevent="restoreRouteNext(routeSelected)">{{$t('route_restore_default')}}</a>
 					</div>
 					<div class="note" v-if="routeNextOff(routeSelected) && routeSelBattle().branches.length">{{$t('route_weights_note')}}</div>
@@ -210,12 +210,22 @@
 						<input type="button" :value="$t('route_set_boss')" v-show="battles.length > 1 && battles[battles.length-1].id != routeSelected" @click="setBossNode(routeSelected)"/>
 						<span class="note" v-show="battles[battles.length-1].id == routeSelected">{{$t('route_is_boss')}}</span>
 					</div>
-					<div>
+					<div v-if="routeSelected != 'start' && battles[battles.length-1].id != routeSelected">
+						<label><input type="checkbox" v-model="routeSelBattle().isStray"/> {{$t('route_stray_flag')}}</label>
+						<div class="note" v-show="routeSelBattle().isStray">{{$t('route_stray_flag_note')}}</div>
+					</div>
+					<div v-show="!routeIsStrayBattle(routeSelected)">
 						<input type="button" :value="routeAdding ? $t('route_pick_target') : '+ '+$t('add_branch')" v-show="routeSelBattle().branches.length < 4 && battles.length > 1" @click="routeAdding ? onRouteBgClick() : onRouteNodeDbl({id:routeSelected,x:0,y:0})"/>
 					</div>
 				</div>
+				<div class="routePanel" v-else-if="routeSelStray()">
+					<div><span class="header">{{routeNodeLabel(routeSelected)}}</span></div>
+					<div class="note">{{$t('route_stray_blank_note')}}</div>
+					<div><input type="button" :value="$t('route_delete_stray')" @click="deleteStrayNode(routeSelected)"/></div>
+				</div>
 				<div class="note" v-else>{{$t('route_select_node')}}</div>
 				<div>
+					<input type="button" :value="'+ '+$t('route_add_stray')" @click="addStrayNode()"/>
 					<input type="button" :value="$t('route_reset_layout')" @click="routeResetLayout()"/>
 					<input type="button" :value="$t('route_clear_all')" @click="onclickRouteClear()"/>
 				</div>
@@ -1002,6 +1012,9 @@
 					</select></label></div>
 					<div class="space">
 						<label><span class="header">{{$t('offroute_before_battle')}}: </span><input type="number" min="0" max="100" v-model.number="battle.offrouteRate" :class="{changed:!!battle.offrouteRate}"/>%</label>
+					</div>
+					<div class="space" v-show="candelete && !isboss">
+						<label :title="$t('route_stray_flag_note')"><input type="checkbox" v-model="battle.isStray"/> {{$t('route_stray_flag')}}</label>
 					</div>
 					<div class="space divBranches" v-show="candelete">
 						<div><span class="header" :title="$t('branches_tooltip')">{{$t('branches')}}:</span></div>

@@ -2,6 +2,8 @@
 
 COMMON.TIME_BATTLE = {
 	VER: '0.1',
+	STRAY_BLANK_TIME: 7, // seconds spent sailing onto a blank (no battle) stray cell before retreating
+
 	ANIMATIONS: [
 		{ key: 'airPhase1', time: 8.4, },
 		{ key: 'airPhase2', time: 11.5, },
