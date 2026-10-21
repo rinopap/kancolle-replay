@@ -215,6 +215,7 @@ var UI_MAIN = Vue.createApp({
 		timeExpCut: false,
 		rtaMode: false,
 		rtaTestMode: false,
+		kmView: { size: 1, x0: null, x1: null, y0: null, y1: null },
 		rtaResortieTime: 0,
 		rtaMaxAttempts: 100,
 		showProgress: false,
@@ -744,17 +745,22 @@ var UI_MAIN = Vue.createApp({
 				if (k) curves.push({ ind: ind, name: this.simSlotName(ind), n: k.n, pts: withBucket ? k.bucket : k.basic, color: KM_COLORS[ind % KM_COLORS.length] });
 			});
 			if (!curves.length) return null;
-			let W = 640, H = 340, L = 64, R = 20, T = 16, B = 52;
+			let sz = this.kmView.size || 1;
+			let W = Math.round(640*sz), H = Math.round(340*sz), L = 64, R = 20, T = 16, B = 52;
 			let xMax = Math.max(1,...curves.map(c => c.pts[c.pts.length-1][0])), yMax = Math.max(1,...curves.map(c => c.n));
-			let nice = (max,count) => {
-				let raw = max/count, pow = Math.pow(10,Math.floor(Math.log10(raw))), f = raw/pow;
+			let nice = (min,max,count) => {
+				let raw = (max-min)/count, pow = Math.pow(10,Math.floor(Math.log10(raw))), f = raw/pow;
 				let step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10)*pow, ticks = [];
-				for (let v=0; v<=max+step*0.999; v+=step) ticks.push(Math.round(v*1e6)/1e6);
+				for (let v=Math.ceil(min/step-1e-9)*step; v<=max+step*1e-6; v+=step) ticks.push(Math.round(v*1e6)/1e6);
 				return ticks;
 			};
-			let xt = nice(xMax,8), yt = nice(yMax,5);
-			let xEnd = xt[xt.length-1], yEnd = yt[yt.length-1];
-			let px = v => L+(W-L-R)*v/xEnd, py = v => T+(H-T-B)*(1-v/yEnd);
+			let fx = nice(0,xMax,8), fy = nice(0,yMax,5);
+			let xEnd = fx[fx.length-1], yEnd = fy[fy.length-1];
+			let vw = this.kmView;
+			let vx0 = vw.x0 == null ? 0 : vw.x0, vx1 = vw.x1 == null ? xEnd : vw.x1;
+			let vy0 = vw.y0 == null ? 0 : vw.y0, vy1 = vw.y1 == null ? yEnd : vw.y1;
+			let xt = nice(vx0,vx1,8), yt = nice(vy0,vy1,5);
+			let px = v => L+(W-L-R)*(v-vx0)/(vx1-vx0), py = v => T+(H-T-B)*(1-(v-vy0)/(vy1-vy0));
 			let f = v => Math.round(v*10)/10;
 			for (let c of curves) {
 				let d = 'M'+f(px(c.pts[0][0]))+','+f(py(c.pts[0][1]));
@@ -763,6 +769,8 @@ var UI_MAIN = Vue.createApp({
 			}
 			return {
 				w: W, h: H, left: L, right: W-R, top: T, bottom: H-B, curves: curves,
+				xEnd: xEnd, yEnd: yEnd, vx0: vx0, vx1: vx1, vy0: vy0, vy1: vy1,
+				zoomed: vw.x0 != null || vw.x1 != null || vw.y0 != null || vw.y1 != null || sz != 1,
 				xTicks: xt.map(v => ({ v: v, x: f(px(v)) })), yTicks: yt.map(v => ({ v: v, y: f(py(v)) })),
 			};
 		},
@@ -1727,6 +1735,49 @@ var UI_MAIN = Vue.createApp({
 				e.preventDefault();
 			}
 		},
+		// Kaplan-Meier chart view: zoom the axes (range) around a point, pan, resize, reset
+		kmZoom: function(axis,factor,frac) {
+			let k = this.kmChart; if (!k) return;
+			let end = axis == 'x' ? k.xEnd : k.yEnd, a = axis == 'x' ? k.vx0 : k.vy0, b = axis == 'x' ? k.vx1 : k.vy1;
+			let c = a+(b-a)*(frac == null ? 0.5 : frac);
+			let len = Math.min(end,Math.max(end/500,(b-a)/factor));
+			let na = c-len*(frac == null ? 0.5 : frac);
+			na = Math.max(0,Math.min(end-len,na));
+			let reset = len >= end-1e-9;
+			this.kmView[axis+'0'] = reset ? null : na;
+			this.kmView[axis+'1'] = reset ? null : na+len;
+		},
+		kmSize: function(d) {
+			this.kmView.size = Math.max(0.5,Math.min(2.5,Math.round((this.kmView.size+d)*100)/100));
+		},
+		kmReset: function() {
+			this.kmView = { size: 1, x0: null, x1: null, y0: null, y1: null };
+		},
+		_kmFrac: function(e) {
+			let k = this.kmChart, r = e.currentTarget.getBoundingClientRect();
+			let x = (e.clientX-r.left)/r.width*k.w, y = (e.clientY-r.top)/r.height*k.h;
+			let T = k.top, B = k.bottom;
+			return { x: Math.max(0,Math.min(1,(x-k.left)/(k.right-k.left))), y: Math.max(0,Math.min(1,(B-y)/(B-T))) };
+		},
+		onwheelKm: function(e) {
+			let fr = this._kmFrac(e), f = e.deltaY < 0 ? 1.25 : 0.8;
+			if (!e.shiftKey) this.kmZoom('x',f,fr.x);
+			if (!e.ctrlKey) this.kmZoom('y',f,fr.y);
+		},
+		ondownKm: function(e) {
+			let k = this.kmChart;
+			this._kmDrag = { cx: e.clientX, cy: e.clientY, x0: k.vx0, x1: k.vx1, y0: k.vy0, y1: k.vy1, w: e.currentTarget.getBoundingClientRect() };
+			e.currentTarget.setPointerCapture(e.pointerId);
+		},
+		onmoveKm: function(e) {
+			let d = this._kmDrag, k = this.kmChart; if (!d) return;
+			let dx = (e.clientX-d.cx)/d.w.width*k.w/(k.right-k.left)*(d.x1-d.x0);
+			let dy = (e.clientY-d.cy)/d.w.height*k.h/(k.bottom-k.top)*(d.y1-d.y0);
+			let shift = (a,b,end,delta) => { let len = b-a, na = Math.max(0,Math.min(end-len,a+delta)); return na; };
+			if (d.x1-d.x0 < k.xEnd-1e-9) { let na = shift(d.x0,d.x1,k.xEnd,-dx); this.kmView.x0 = na; this.kmView.x1 = na+d.x1-d.x0; }
+			if (d.y1-d.y0 < k.yEnd-1e-9) { let na = shift(d.y0,d.y1,k.yEnd,dy); this.kmView.y0 = na; this.kmView.y1 = na+d.y1-d.y0; }
+		},
+		onupKm: function(e) { this._kmDrag = null; },
 		onchangeRtaMode: function() {
 			// RTA's headline number is total time, so turn time statistics on for the user when that's already acknowledged
 			if (!this.rtaMode) this.rtaTestMode = false;

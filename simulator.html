@@ -645,7 +645,13 @@
 				</table>
 				<div class="kmChart" v-if="kmChart">
 					<div class="header">{{$t('rta_km_title')}}</div>
-					<svg :viewBox="'0 0 '+kmChart.w+' '+kmChart.h" :width="kmChart.w" :height="kmChart.h">
+					<div class="kmTools">
+						<span>{{$t('rta_km_size')}} <button type="button" @click="kmSize(-0.2)">−</button><button type="button" @click="kmSize(0.2)">＋</button></span>
+						<span>{{$t('rta_km_xscale')}} <button type="button" @click="kmZoom('x',0.8)">−</button><button type="button" @click="kmZoom('x',1.25)">＋</button></span>
+						<span>{{$t('rta_km_yscale')}} <button type="button" @click="kmZoom('y',0.8)">−</button><button type="button" @click="kmZoom('y',1.25)">＋</button></span>
+						<button type="button" @click="kmReset" :disabled="!kmChart.zoomed">{{$t('rta_km_reset')}}</button>
+					</div>
+					<svg class="kmSvg" @wheel.prevent="onwheelKm" @pointerdown="ondownKm" @pointermove="onmoveKm" @pointerup="onupKm" @pointercancel="onupKm" :viewBox="'0 0 '+kmChart.w+' '+kmChart.h" :width="kmChart.w" :height="kmChart.h">
 						<g class="kmGrid">
 							<line v-for="t in kmChart.yTicks" :key="'gy'+t.v" :x1="kmChart.left" :x2="kmChart.right" :y1="t.y" :y2="t.y"/>
 							<line v-for="t in kmChart.xTicks" :key="'gx'+t.v" :x1="t.x" :x2="t.x" :y1="kmChart.top" :y2="kmChart.bottom"/>
@@ -658,10 +664,12 @@
 							<text :x="(kmChart.left+kmChart.right)/2" :y="kmChart.h-6" text-anchor="middle" class="kmAxisTitle">{{$t('rta_km_x')}}</text>
 							<text :x="14" :y="(kmChart.top+kmChart.bottom)/2" text-anchor="middle" class="kmAxisTitle" :transform="'rotate(-90 14 '+((kmChart.top+kmChart.bottom)/2)+')'">{{$t('rta_km_y')}}</text>
 						</g>
-						<path v-for="c in kmChart.curves" :key="c.ind" :d="c.path" fill="none" :stroke="c.color" stroke-width="2" stroke-linejoin="round"/>
+						<clipPath id="kmClip"><rect :x="kmChart.left" :y="kmChart.top" :width="kmChart.right-kmChart.left" :height="kmChart.bottom-kmChart.top"/></clipPath>
+						<g clip-path="url(#kmClip)"><path v-for="c in kmChart.curves" :key="c.ind" :d="c.path" fill="none" :stroke="c.color" stroke-width="2" stroke-linejoin="round"/></g>
 					</svg>
 					<div class="kmLegend"><span v-for="c in kmChart.curves" :key="c.ind"><i :style="{background:c.color}"></i>{{$t('sim_slot_n',[c.name])}} (n={{c.n}})</span></div>
 					<div class="note">{{$t('rta_km_note')}}</div>
+					<div class="note">{{$t('rta_km_hint')}}</div>
 				</div>
 				</div>
 			</div>
