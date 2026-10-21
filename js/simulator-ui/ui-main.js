@@ -73,6 +73,8 @@ var UNDO_WATCH_KEYS = SIM_SLOT_PLAYER_KEYS;
 
 // percentile results per (frozen) samples array, so switching slots does not re-sort 100k+ values
 var TIME_TAIL_CACHE = new WeakMap();
+var TIME_STAT_CACHE = new WeakMap();
+var KM_COLORS = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2','#db2777'];
 
 var UI_MAIN = Vue.createApp({
 	data: () => ({
@@ -212,6 +214,7 @@ var UI_MAIN = Vue.createApp({
 		includeTimeStats: false,
 		timeExpCut: false,
 		rtaMode: false,
+		rtaTestMode: false,
 		rtaResortieTime: 0,
 		rtaMaxAttempts: 100,
 		showProgress: false,
@@ -252,9 +255,9 @@ var UI_MAIN = Vue.createApp({
 			fuelHP: 0, ammoHP: 0, steelHP: 0, bauxHP: 0, bucketHP: 0, dameconHP: 0, underwayHP: 0,
 			fuelTP: 0, ammoTP: 0, steelTP: 0, bauxTP: 0, bucketTP: 0, dameconTP: 0, underwayTP: 0,
 			perHPRes: 1, perTPRes: 1,
-			rta: { active: false, runs: 0, attempts: 0, avg: 0, stddev: 0, capped: 0, firstDayS: 0, dist: [] },
+			rta: { active: false, testMode: false, runs: 0, attempts: 0, avg: 0, stddev: 0, capped: 0, firstDayS: 0, dist: [] },
 			showTime: false,
-			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0, _minAllBasic: null, _maxAllBasic: null, _minAllBucket: null, _maxAllBucket: null, _samplesAll: [], _samplesAllBucket: [] },
+			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0, _minAllBasic: null, _maxAllBasic: null, _minAllBucket: null, _maxAllBucket: null, _samplesAll: [], _samplesAllBucket: [], _samplesStat: [], _samplesStatBucket: [], _kmT: [], _kmTB: [], _kmE: [], _numRetreatRuns: 0 },
 			timeIncludeBucket: false,
 		},
 		
@@ -482,12 +485,13 @@ var UI_MAIN = Vue.createApp({
 			);
 			let withBucket = this.results.timeIncludeBucket;
 			let colVals = cols.map(c => {
-				let sm = Object.assign({},c.summary), h = sm.timeHist;
-				if (h && sm.rta) {
-					let mn = withBucket ? h.minBucket : h.minBasic, mx = withBucket ? h.maxBucket : h.maxBasic;
-					let tail = withBucket ? h.tailBucket : h.tailBasic;
-					sm.timeMin = Math.round(1000*mn)/1000; sm.timeMax = Math.round(1000*mx)/1000;
-					sm.timeP05 = tail.p05; sm.timeP95 = tail.p95; sm.timeWorst5 = tail.worst5;
+				let sm = Object.assign({},c.summary);
+				if (sm.rta && sm.rtaStat) {
+					// RTA: statistics of the runs without a retreat
+					let st = withBucket ? sm.rtaStat.bucket : sm.rtaStat.basic;
+					sm.time = st.n ? Math.round(1000*st.mean)/1000 : null;
+					sm.timeStddev = st.n ? Math.round(1000*st.std)/1000 : null;
+					sm.timeMin = st.min; sm.timeP05 = st.p05; sm.timeP95 = st.p95; sm.timeMax = st.max; sm.timeWorst5 = st.worst5;
 				}
 				return sm;
 			});
@@ -696,13 +700,23 @@ var UI_MAIN = Vue.createApp({
 		resultsUnderwayTPPer: function() {
 			return Math.round(1000*this.results.perTPRes*this.results.underwayTP)/1000;
 		},
+		// RTA: stats of the runs that did not include a retreat (null outside RTA mode)
+		rtaStat: function() {
+			if (!this.results.rta.active) return null;
+			let t = this.results.time;
+			// test mode: only runs without a retreat; otherwise every run
+			if (this.results.rta.testMode) return this._timeStatsOf(this.results.timeIncludeBucket ? t._samplesStatBucket : t._samplesStat);
+			return this._timeStatsOf(this.results.timeIncludeBucket ? t._samplesAllBucket : t._samplesAll);
+		},
 		resultsTimeAll: function() {
+			if (this.rtaStat) return this.rtaStat.n ? Math.round(1000*this.rtaStat.mean)/1000 : 0;
 			return Math.round(1000*(this.results.time._timeAllBasic + (this.results.timeIncludeBucket ? this.results.time._timeAllBucket : 0)))/1000;
 		},
 		resultsTimeCompleted: function() {
 			return Math.round(1000*(this.results.time._timeCompletedBasic + (this.results.timeIncludeBucket ? this.results.time._timeCompletedBucket : 0)))/1000;
 		},
 		resultsTimeStddevAll: function() {
+			if (this.rtaStat) return this.rtaStat.n ? Math.round(1000*this.rtaStat.std)/1000 : 0;
 			return Math.round(1000*(this.results.timeIncludeBucket ? this.results.time._stddevAllBucket : this.results.time._stddevAllBasic))/1000;
 		},
 		resultsTimeStddevCompleted: function() {
@@ -710,6 +724,10 @@ var UI_MAIN = Vue.createApp({
 		},
 		// fastest / slowest run and the share of runs in the histogram interval each one falls in
 		resultsTimeExtremes: function() {
+			if (this.rtaStat) {
+				let st = this.rtaStat;
+				return st.n ? { min: st.min, p05: st.p05, p95: st.p95, max: st.max, worst5: st.worst5 } : null;
+			}
 			let t = this.results.time, withBucket = this.results.timeIncludeBucket;
 			let mn = withBucket ? t._minAllBucket : t._minAllBasic, mx = withBucket ? t._maxAllBucket : t._maxAllBasic;
 			if (mn == null || mx == null) return null;
@@ -718,6 +736,36 @@ var UI_MAIN = Vue.createApp({
 			return { min: round3(mn), p05: tail.p05, p95: tail.p95, max: round3(mx), worst5: tail.worst5 };
 		},
 
+		// one chart with a Kaplan-Meier curve per slot that has RTA results: x = time (s), y = runs not yet finished
+		kmChart: function() {
+			let withBucket = this.results.timeIncludeBucket, curves = [];
+			this.simSlots.forEach((slot,ind) => {
+				let k = slot.summary && slot.summary.km;
+				if (k) curves.push({ ind: ind, name: this.simSlotName(ind), n: k.n, pts: withBucket ? k.bucket : k.basic, color: KM_COLORS[ind % KM_COLORS.length] });
+			});
+			if (!curves.length) return null;
+			let W = 640, H = 340, L = 64, R = 20, T = 16, B = 52;
+			let xMax = Math.max(1,...curves.map(c => c.pts[c.pts.length-1][0])), yMax = Math.max(1,...curves.map(c => c.n));
+			let nice = (max,count) => {
+				let raw = max/count, pow = Math.pow(10,Math.floor(Math.log10(raw))), f = raw/pow;
+				let step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10)*pow, ticks = [];
+				for (let v=0; v<=max+step*0.999; v+=step) ticks.push(Math.round(v*1e6)/1e6);
+				return ticks;
+			};
+			let xt = nice(xMax,8), yt = nice(yMax,5);
+			let xEnd = xt[xt.length-1], yEnd = yt[yt.length-1];
+			let px = v => L+(W-L-R)*v/xEnd, py = v => T+(H-T-B)*(1-v/yEnd);
+			let f = v => Math.round(v*10)/10;
+			for (let c of curves) {
+				let d = 'M'+f(px(c.pts[0][0]))+','+f(py(c.pts[0][1]));
+				for (let i=1; i<c.pts.length; i++) d += ' H'+f(px(c.pts[i][0]))+' V'+f(py(c.pts[i][1])); // step function
+				c.path = d;
+			}
+			return {
+				w: W, h: H, left: L, right: W-R, top: T, bottom: H-B, curves: curves,
+				xTicks: xt.map(v => ({ v: v, x: f(px(v)) })), yTicks: yt.map(v => ({ v: v, y: f(py(v)) })),
+			};
+		},
 		// histogram interval layout shared by the current results and every slot in the compare table
 		timeBinning: function() {
 			let withBucket = this.results.timeIncludeBucket;
@@ -761,6 +809,42 @@ var UI_MAIN = Vue.createApp({
 			let res = { p05: round3(sorted[n5-1]), p95: round3(sorted[Math.max(0,Math.ceil(sorted.length*0.95)-1)]), worst5: round3(worst.reduce((x,y) => x+y,0)/worst.length) };
 			if (Object.isFrozen(samples)) TIME_TAIL_CACHE.set(samples,res);
 			return res;
+		},
+		// n / mean / std / min / max / p05 / p95 / slowest-5% mean of a list of times (cached for frozen arrays)
+		_timeStatsOf: function(arr) {
+			if (!arr || !arr.length) return { n: 0, mean: null, std: null, min: null, max: null, p05: null, p95: null, worst5: null };
+			let cached = TIME_STAT_CACHE.get(arr);
+			if (cached) return cached;
+			let n = arr.length, sum = 0, sumSq = 0, min = Infinity, max = -Infinity;
+			for (let i=0; i<n; i++) { let v = arr[i]; sum += v; sumSq += v*v; if (v < min) min = v; if (v > max) max = v; }
+			let mean = sum/n;
+			let res = Object.assign({ n: n, mean: mean, std: Math.sqrt(Math.max(0,sumSq/n-mean*mean)), min: Math.round(1000*min)/1000, max: Math.round(1000*max)/1000 },this._timeTail(arr));
+			if (Object.isFrozen(arr)) TIME_STAT_CACHE.set(arr,res);
+			return res;
+		},
+		// Kaplan-Meier estimate of "runs not yet finished" over time: [[t, expected number of unfinished runs]], event = 1 finished / 0 censored
+		_kmCurve: function(T,E) {
+			let N = T.length;
+			if (!N) return null;
+			let idx = new Array(N);
+			for (let i=0; i<N; i++) idx[i] = i;
+			idx.sort((a,b) => (T[a]-T[b]) || (E[b]-E[a])); // finishes before censorings at equal times
+			let risk = N, S = 1, pts = [[0,N]], i = 0;
+			while (i < N) {
+				let t = T[idx[i]], d = 0, c = 0;
+				while (i < N && T[idx[i]] == t) { if (E[idx[i]]) d++; else c++; i++; }
+				if (d > 0 && risk > 0) { S *= 1 - d/risk; pts.push([Math.round(1000*t)/1000,Math.round(1000*S*N)/1000]); }
+				risk -= d + c;
+			}
+			if (pts.length > 900) { // thin to roughly one point per x-pixel-ish cell, keeping the last point of each cell
+				let cell = pts[pts.length-1][0]/900, out = [], last = -1;
+				for (let p of pts) {
+					let c = Math.floor(p[0]/cell);
+					if (c == last) out[out.length-1] = p; else { out.push(p); last = c; }
+				}
+				pts = out;
+			}
+			return { n: N, pts: pts };
 		},
 		_binHistogram: function(hist,totalNum,binning) {
 			let bars = [];
@@ -1144,10 +1228,10 @@ var UI_MAIN = Vue.createApp({
 		},
 		// deep copy of the results; the (frozen) per-run sample arrays are shared by reference instead of copied
 		_cloneResults: function() {
-			let res = JSON.parse(JSON.stringify(this.results,(k,v) => k.startsWith('_samples') ? undefined : v));
+			let big = ['_samplesAll','_samplesAllBucket','_samplesStat','_samplesStatBucket','_kmT','_kmTB','_kmE'];
+			let res = JSON.parse(JSON.stringify(this.results,(k,v) => big.includes(k) ? undefined : v));
 			if (res.time) {
-				res.time._samplesAll = this.results.time._samplesAll;
-				res.time._samplesAllBucket = this.results.time._samplesAllBucket;
+				for (let k of big) res.time[k] = this.results.time[k];
 			}
 			return res;
 		},
@@ -1170,10 +1254,19 @@ var UI_MAIN = Vue.createApp({
 				let t = r.time;
 				summary.timeHist = {
 					num: t._histogramNumAll,
-					tailBasic: this._timeTail(t._samplesAll), tailBucket: this._timeTail(t._samplesAllBucket),
 					basic: Object.assign({},t._histogramAll), bucket: Object.assign({},t._histogramAllBucket),
-					minBasic: t._minAllBasic, maxBasic: t._maxAllBasic, minBucket: t._minAllBucket, maxBucket: t._maxAllBucket,
 				};
+				if (r.rta.active) {
+					// time statistics (runs without a retreat) and the Kaplan-Meier curves, for both bucket variants
+					if (r.rta.testMode) {
+						summary.rtaStat = { basic: this._timeStatsOf(t._samplesStat), bucket: this._timeStatsOf(t._samplesStatBucket) };
+						summary.retreatRuns = t._numRetreatRuns;
+						let kmB = this._kmCurve(t._kmT,t._kmE), kmK = this._kmCurve(t._kmTB,t._kmE);
+						if (kmB) summary.km = { n: kmB.n, basic: kmB.pts, bucket: kmK.pts };
+					} else {
+						summary.rtaStat = { basic: this._timeStatsOf(t._samplesAll), bucket: this._timeStatsOf(t._samplesAllBucket) };
+					}
+				}
 				summary.time = this.resultsTimeAll;
 				summary.timeStddev = this.resultsTimeStddevAll;
 				let ex = this.resultsTimeExtremes;
@@ -1481,6 +1574,7 @@ var UI_MAIN = Vue.createApp({
 			
 			let rtaRes = resultSim.rta;
 			if (this.results.rta.active = !!(rtaRes && rtaRes.runs)) {
+				this.results.rta.testMode = !!this.rtaTestMode;
 				let runs = rtaRes.runs, mean = rtaRes.attempts/runs;
 				this.results.rta.runs = runs;
 				this.results.rta.attempts = rtaRes.attempts;
@@ -1537,6 +1631,13 @@ var UI_MAIN = Vue.createApp({
 				// frozen so Vue does not wrap 100k+ numbers in reactive proxies (slow slot switching / copying)
 				this.results.time._samplesAll = Object.freeze(resultSim.time.all.samples || []);
 				this.results.time._samplesAllBucket = Object.freeze(resultSim.time.all.samplesBucket || []);
+				// RTA: runs without a retreat (time statistics) and Kaplan-Meier data (time / bucket-inclusive time / finished flag)
+				this.results.time._samplesStat = Object.freeze(resultSim.time.all.samplesStat || []);
+				this.results.time._samplesStatBucket = Object.freeze(resultSim.time.all.samplesStatBucket || []);
+				this.results.time._kmT = Object.freeze(resultSim.time.all.samplesKmT || []);
+				this.results.time._kmTB = Object.freeze(resultSim.time.all.samplesKmTB || []);
+				this.results.time._kmE = Object.freeze(resultSim.time.all.samplesKmE || []);
+				this.results.time._numRetreatRuns = resultSim.time.all.numRetreatRuns || 0;
 				this.results.time._minAllBasic = resultSim.time.all.minTime;
 				this.results.time._maxAllBasic = resultSim.time.all.maxTime;
 				this.results.time._minAllBucket = resultSim.time.all.minTimeBucket;
@@ -1628,6 +1729,7 @@ var UI_MAIN = Vue.createApp({
 		},
 		onchangeRtaMode: function() {
 			// RTA's headline number is total time, so turn time statistics on for the user when that's already acknowledged
+			if (!this.rtaMode) this.rtaTestMode = false;
 			if (this.rtaMode && !this.includeTimeStats && localStorage.sim2_timeStatsVer == COMMON.TIME_BATTLE.VER) this.includeTimeStats = true;
 		},
 		onclickTimeStatsInfo: function(e) {

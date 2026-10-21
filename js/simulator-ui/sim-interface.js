@@ -116,7 +116,7 @@ var SIM = {
 			nodes: [],
 			rta: { runs: 0, attempts: 0, capped: 0, sumSq: 0, firstDayS: 0, histogram: {} },
 			time: {
-				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, minTime: null, maxTime: null, minTimeBucket: null, maxTimeBucket: null, samples: [], samplesBucket: [], animations: {}, histogram: {}, histogramBucket: {} },
+				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, minTime: null, maxTime: null, minTimeBucket: null, maxTimeBucket: null, samples: [], samplesBucket: [], samplesStat: [], samplesStatBucket: [], samplesKmT: [], samplesKmTB: [], samplesKmE: [], numRetreatRuns: 0, animations: {}, histogram: {}, histogramBucket: {} },
 				completed: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
 				nodes: [],
 			},
@@ -970,14 +970,16 @@ var SIM = {
 		};
 		this.simResultPrev = null; // a sortie that ends on a blank stray cell fights nothing: don't inherit the last sortie's result
 		let strayBlank = false;
+		let endReason = 'other'; // how this sortie ended: 'boss' | 'retreat' | 'stray' | 'other' (route simply ran out)
 		battleInd = pickNext(dataInput.startBranches,dataInput.startNextOff,0);
-		if (battleInd < 0) { strayBlank = true; battleInd = dataInput.nodes.length; } // Start leads to a blank stray cell
+		if (battleInd < 0) { strayBlank = true; endReason = 'stray'; battleInd = dataInput.nodes.length; } // Start leads to a blank stray cell
 		else if (battleInd >= dataInput.nodes.length) battleInd = 0; // a Start node with no way out falls back to the first node
 		let _branchSafety = 0;
 		while (battleInd<dataInput.nodes.length) {
 			if (++_branchSafety > 50) break; // guard against a misconfigured branch looping back on itself
 			let node = dataInput.nodes[battleInd];
 			if (node.offrouteRate && Math.random() < node.offrouteRate) {
+				endReason = 'retreat'; // returned before the battle
 				break;
 			}
 			
@@ -1109,6 +1111,7 @@ var SIM = {
 				if (includeResults) {
 					this._updateResultsNode(result,battleInd,dataInput);
 				}
+				endReason = 'boss';
 				break;
 			}
 			
@@ -1147,17 +1150,18 @@ var SIM = {
 			}
 			
 			for (let ship of shipsAll) delete ship._tempFCF;
-			if (isRetreat) break;
-			if (node.isStray) break; // stray battle node: the sortie ends (retreat) after this battle
+			if (isRetreat) { endReason = 'retreat'; break; }
+			if (node.isStray) { endReason = 'stray'; break; } // stray battle node: the sortie ends (retreat) after this battle
 			
 			// route branching: with no branches configured this always just continues to
 			// battleInd+1 (identical to the old fixed for-loop); the final node in dataInput.nodes
 			// is always the boss/destination for every possible resolved path, so isBossNode and
 			// the end-of-sortie checks elsewhere (battleNum == dataInput.nodes.length) still hold
 			battleInd = pickNext(node.branches,node.nextOff,battleInd+1);
-			if (battleInd < 0) { strayBlank = true; break; } // moved onto a blank stray cell: retreat
+			if (battleInd < 0) { strayBlank = true; endReason = 'stray'; break; } // moved onto a blank stray cell: retreat
 		}
 		this._strayBlankLast = strayBlank;
+		this._endReasonLast = endReason;
 		
 		if (includeResults) {
 			this._results.replay = dataReplay;
@@ -1229,10 +1233,19 @@ var SIM = {
 		let maxAttempts = Math.max(1,Math.min(1000,+dataInput.rtaMaxAttempts || 100));
 		this._rtaState = { battles: [], numBuckets: 0, replayBase: null };
 		let attempts = 0, success = false;
+		let resortieTime = +dataInput.rtaResortieTime || 0;
+		let retreatElapsed = null, retreatBuckets = 0; // elapsed time (and bucket count) when this run's first retreat happened
 		try {
 			while (attempts < maxAttempts) {
 				attempts++;
 				this._doSimSortie(dataInput,dataReplay);
+				if (this._endReasonLast == 'retreat' && retreatElapsed == null && this._rtaState.replayBase) {
+					// a sortie that ends in a retreat (as opposed to a stray node or a non-S boss result)
+					let partial = Object.assign({},this._rtaState.replayBase,{ battles: this._rtaState.battles });
+					retreatElapsed = COMMON.TIME_BATTLE.getTimeStats(partial,{ expCut: !!dataInput.timeExpCut }).time
+						+ (attempts-1)*resortieTime + (this._rtaState.numStrayBlank || 0)*COMMON.TIME_BATTLE.STRAY_BLANK_TIME;
+					retreatBuckets = this._rtaState.numBuckets;
+				}
 				let prev = this.simResultPrev;
 				if (prev && prev.battleNum == dataInput.nodes.length && prev.result.rank == 'S') { success = true; break; }
 			}
@@ -1254,9 +1267,22 @@ var SIM = {
 			let resultsTime = COMMON.TIME_BATTLE.getTimeStats(replay,{ expCut: !!dataInput.timeExpCut });
 			resultsTime.battles = this._foldByNode(resultsTime,rta.battles);
 			// time spent between sorties (returning to port, resupply, sortie select): user supplied
-			resultsTime.time += (attempts-1)*(+dataInput.rtaResortieTime || 0);
+			resultsTime.time += (attempts-1)*resortieTime;
 			resultsTime.time += (rta.numStrayBlank || 0)*COMMON.TIME_BATTLE.STRAY_BLANK_TIME; // blank stray cells reached
 			this._recordTime(resultsTime,rta.numBuckets,success);
+			// Time statistics (average, percentiles...) leave out runs that include a retreat; the histogram keeps every run.
+			// Kaplan-Meier: a run is "finished" at its total time when it ends in a boss S, and censored when it was cut off
+			// by the attempt cap, or at the moment of its first retreat.
+			let tAll = this._results.time.all;
+			let bucketUnit = COMMON.TIME_BATTLE.ANIMATIONS.find(a => a.key == 'bucket').time;
+			let tBucket = resultsTime.time + rta.numBuckets*bucketUnit;
+			if (retreatElapsed == null) {
+				tAll.samplesStat.push(resultsTime.time); tAll.samplesStatBucket.push(tBucket);
+				tAll.samplesKmT.push(resultsTime.time); tAll.samplesKmTB.push(tBucket); tAll.samplesKmE.push(success ? 1 : 0);
+			} else {
+				tAll.numRetreatRuns++;
+				tAll.samplesKmT.push(retreatElapsed); tAll.samplesKmTB.push(retreatElapsed + retreatBuckets*bucketUnit); tAll.samplesKmE.push(0);
+			}
 		}
 	},
 	

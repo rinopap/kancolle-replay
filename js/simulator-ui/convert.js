@@ -1082,7 +1082,7 @@ window.CONVERT = {
 		
 		if (dataUI.includeTimeStats) dataSave.includeTimeStats = COMMON.TIME_BATTLE.VER;
 		if (dataUI.timeExpCut) dataSave.timeExpCut = true;
-		if (dataUI.rtaMode) dataSave.rta = { max: dataUI.rtaMaxAttempts, resortieTime: dataUI.rtaResortieTime };
+		if (dataUI.rtaMode) dataSave.rta = { max: dataUI.rtaMaxAttempts, resortieTime: dataUI.rtaResortieTime, test: dataUI.rtaTestMode ? 1 : 0 };
 		
 		dataSave.version = this._SAVE_VERSION_CURRENT;
 		
@@ -1247,6 +1247,7 @@ window.CONVERT = {
 		}
 		dataUI.timeExpCut = !!dataSave.timeExpCut;
 		dataUI.rtaMode = !!dataSave.rta;
+		dataUI.rtaTestMode = !!(dataSave.rta && dataSave.rta.test);
 		if (dataSave.rta) {
 			dataUI.rtaMaxAttempts = dataSave.rta.max || 100;
 			dataUI.rtaResortieTime = +dataSave.rta.resortieTime || 0;

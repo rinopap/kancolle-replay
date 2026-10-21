@@ -736,6 +736,14 @@ div.scrollAnchor > div {
 	padding: 2px 10px;
 	text-align: center;
 }
+#divSimSlotCompare .kmChart { margin-top: 10px; max-width: 100%; overflow-x: auto; }
+#divSimSlotCompare .kmChart svg { display: block; background: #FFF; border: 1px solid #CCC; }
+#divSimSlotCompare .kmGrid line { stroke: #E4E4E4; stroke-width: 1; }
+#divSimSlotCompare .kmAxis line { stroke: #666; stroke-width: 1.2; }
+#divSimSlotCompare .kmAxis text { font-size: 11px; fill: #444; }
+#divSimSlotCompare .kmAxis text.kmAxisTitle { font-size: 12px; fill: #222; }
+#divSimSlotCompare .kmLegend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 13px; }
+#divSimSlotCompare .kmLegend i { display: inline-block; width: 18px; height: 3px; margin-right: 5px; vertical-align: middle; }
 #divSimSlotCompare th.simSlotColActive {
 	background-color: #d6ebff;
 }

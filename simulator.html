@@ -605,6 +605,7 @@
 						<label>{{$t('rta_resortie_time')}} <input type="number" min="0" step="0.5" v-model.number="rtaResortieTime"/>{{$t('rta_sec')}}</label>
 						<label>{{$t('rta_max_attempts')}} <input type="number" min="1" max="1000" v-model.number="rtaMaxAttempts"/></label>
 					</span>
+					<div style="margin-left:20px"><label><input type="checkbox" v-model="rtaTestMode" :disabled="!rtaMode"/>{{$t('rta_test_mode')}}</label> <span :title="$t('rta_test_mode_desc')" style="font-weight:bold;text-decoration:underline;cursor:help">(?)</span></div>
 					<div class="note" v-show="rtaMode && !includeTimeStats">{{$t('rta_need_time_stats')}}</div>
 				</div>
 				<div>
@@ -634,14 +635,34 @@
 				<div v-for="warning in results.warnings">{{$t('sim_warning.' + warning.key, warning.args)}}</div>
 			</div>
 			
-			<div id="divSimSlotCompare" v-show="simSlotCompareRows.length">
+			<div id="divSimSlotCompare" v-show="simSlotCompareRows.length || kmChart">
 				<h3 class="toggleHeader" @click="toggleSection('compare')">{{$t('sim_slot_compare')}} <span class="toggleArrow">{{sectionsOpen.compare ? '&#9660;' : '&#9654;'}}</span></h3>
 				<div v-show="sectionsOpen.compare">
 				<div class="note">{{$t('sim_slot_compare_note')}} <a href="#" @click.prevent="onclickClearSimSlotCompare">({{$t('clear')}})</a></div>
-				<table>
+				<table v-show="simSlotCompareRows.length">
 					<tr><th></th><th v-for="col in simSlotCompareCols" :class="{ simSlotColActive: col.ind == simSlotActive }">{{$t('sim_slot_n',[col.name])}}</th></tr>
 					<tr v-for="row in simSlotCompareRows"><th style="text-align:right">{{$t(row.label)}}</th><td v-for="cell in row.cells" :class="{ simSlotBest: cell.best }">{{cell.text}}</td></tr>
 				</table>
+				<div class="kmChart" v-if="kmChart">
+					<div class="header">{{$t('rta_km_title')}}</div>
+					<svg :viewBox="'0 0 '+kmChart.w+' '+kmChart.h" :width="kmChart.w" :height="kmChart.h">
+						<g class="kmGrid">
+							<line v-for="t in kmChart.yTicks" :key="'gy'+t.v" :x1="kmChart.left" :x2="kmChart.right" :y1="t.y" :y2="t.y"/>
+							<line v-for="t in kmChart.xTicks" :key="'gx'+t.v" :x1="t.x" :x2="t.x" :y1="kmChart.top" :y2="kmChart.bottom"/>
+						</g>
+						<g class="kmAxis">
+							<line :x1="kmChart.left" :x2="kmChart.right" :y1="kmChart.bottom" :y2="kmChart.bottom"/>
+							<line :x1="kmChart.left" :x2="kmChart.left" :y1="kmChart.top" :y2="kmChart.bottom"/>
+							<text v-for="t in kmChart.xTicks" :key="'tx'+t.v" :x="t.x" :y="kmChart.bottom+16" text-anchor="middle">{{t.v}}</text>
+							<text v-for="t in kmChart.yTicks" :key="'ty'+t.v" :x="kmChart.left-6" :y="t.y+4" text-anchor="end">{{t.v}}</text>
+							<text :x="(kmChart.left+kmChart.right)/2" :y="kmChart.h-6" text-anchor="middle" class="kmAxisTitle">{{$t('rta_km_x')}}</text>
+							<text :x="14" :y="(kmChart.top+kmChart.bottom)/2" text-anchor="middle" class="kmAxisTitle" :transform="'rotate(-90 14 '+((kmChart.top+kmChart.bottom)/2)+')'">{{$t('rta_km_y')}}</text>
+						</g>
+						<path v-for="c in kmChart.curves" :key="c.ind" :d="c.path" fill="none" :stroke="c.color" stroke-width="2" stroke-linejoin="round"/>
+					</svg>
+					<div class="kmLegend"><span v-for="c in kmChart.curves" :key="c.ind"><i :style="{background:c.color}"></i>{{$t('sim_slot_n',[c.name])}} (n={{c.n}})</span></div>
+					<div class="note">{{$t('rta_km_note')}}</div>
+				</div>
 				</div>
 			</div>
 			<div id="divResults" ref="divResults" v-show="results.active">
@@ -664,6 +685,7 @@
 							<tr><th style="text-align:right">{{$t('rta_first_day_s')}}</th><td><span class="resultBold">{{results.rta.firstDayS}}%</span></td></tr>
 							<tr v-show="results.rta.capped"><th style="text-align:right">{{$t('rta_capped')}}</th><td class="noteBold">{{results.rta.capped}}</td></tr>
 							<tr v-show="results.showTime"><th style="text-align:right">{{$t('rta_total_time')}}</th><td><span class="resultBold">{{$t('x_sec',[resultsTimeAll])}}</span> (±{{$t('x_sec',[resultsTimeStddevAll])}})</td></tr>
+							<tr v-if="results.showTime && rtaStat && results.rta.testMode"><th style="text-align:right">{{$t('rta_stat_runs')}}</th><td>{{rtaStat.n}} / {{results.rta.runs}} <span class="note" style="color:inherit">({{$t('rta_stat_runs_note')}})</span></td></tr>
 							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_fastest_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.min])}}</td></tr>
 							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_p05_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.p05])}}</td></tr>
 							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_p95_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.p95])}}</td></tr>
