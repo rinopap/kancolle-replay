@@ -1294,6 +1294,12 @@ var UI_MAIN = Vue.createApp({
 			this.simSlotActive = ind;
 			// a slot opened for the first time starts as a copy of the slot we came from
 			if (!slot.save) slot.save = JSON.parse(JSON.stringify(prevSave));
+			this._applySlotToUI(ind);
+		},
+		// load slot `ind` (its save, results and undo history) into the editing UI
+		_applySlotToUI: function(ind) {
+			let slot = this.simSlots[ind];
+			this._undoApplying = true;
 			this._resetPlayerSide();
 			this._resetBattlesToOne();
 			let loadData = JSON.parse(JSON.stringify(slot.save));
@@ -1316,6 +1322,72 @@ var UI_MAIN = Vue.createApp({
 			this.undoStack = slot.undoStack || [this._undoSnapshotNow()];
 			this.redoStack = slot.redoStack || [];
 			this.$nextTick(() => { this._undoApplying = false; });
+		},
+		// ---- file manager support (js/simulator-ui/file-manager.js) ----
+		// string describing the editable state, used to tell whether the open file has unsaved changes
+		fileStateStr: function() {
+			let slots = this.simSlots.map((s,i) => i == this.simSlotActive ? null : (s.save || null));
+			let sig = this.simSlots.map((s,i) => i == this.simSlotActive ? (this.results.active ? 'a'+(this._resultsVer || 0) : 0) : (s.results ? 1 : 0));
+			return JSON.stringify([CONVERT.uiToSave(this),slots,this.simSlotActive,sig]);
+		},
+		// everything that goes into one file: the whole simulator state, all slots A-G and their results
+		uiToFileData: function() {
+			this._saveActiveSlot();
+			let toPlain = o => o ? JSON.parse(JSON.stringify(o)) : null;
+			return {
+				fileVersion: 1,
+				save: CONVERT.uiToSave(this),
+				active: this.simSlotActive,
+				slots: this.simSlots.map(s => ({ save: toPlain(s.save), enemySync: s.enemySync, summary: toPlain(s.summary), results: toPlain(s.results) })),
+				stateStr: this.fileStateStr(),
+			};
+		},
+		_freezeResultsBig: function(res) {
+			if (!res || !res.time) return res;
+			for (let k of ['_samplesAll','_samplesAllBucket','_samplesStat','_samplesStatBucket','_kmT','_kmTB','_kmE']) {
+				if (Array.isArray(res.time[k])) Object.freeze(res.time[k]);
+			}
+			return res;
+		},
+		// replace the whole simulator state with the contents of a file (null = a blank simulator)
+		loadFileData: function(data) {
+			if (!this.canSim) return false;
+			this._undoApplying = true;
+			// back to defaults first: settings, memo, flags and results options are not reset by CONVERT.loadSave
+			this.memo = '';
+			for (let key in SIMCONSTS.defaults) {
+				let v = SIMCONSTS.defaults[key];
+				this.settings[key] = Array.isArray(v) ? v.slice() : v;
+			}
+			for (let m of this.settings.mechanics) m.enabled = true;
+			this.autoBonus = null;
+			this.includeTimeStats = false;
+			this.results.perHPRes = 1;
+			this.results.perTPRes = 1;
+			this.results.timeIncludeBucket = 0;
+			for (let i=0; i<SIM_SLOT_COUNT; i++) this.simSlots[i] = { save: null, results: null, summary: null, undoStack: null, redoStack: null, enemySync: i != 0 };
+			this.simSlotActive = 0;
+			this._resetPlayerSide();
+			this._resetBattlesToOne();
+			if (data) {
+				CONVERT.loadSave(data.save,this);
+				(data.slots || []).forEach((d,i) => {
+					if (!d || i >= SIM_SLOT_COUNT) return;
+					this.simSlots[i] = {
+						save: d.save || null, summary: d.summary || null, enemySync: d.enemySync !== undefined ? d.enemySync : (i != 0),
+						results: this._freezeResultsBig(d.results || null), undoStack: null, redoStack: null,
+					};
+				});
+				if (data.active >= 0 && data.active < SIM_SLOT_COUNT) this.simSlotActive = data.active;
+				if (!this.simSlots[this.simSlotActive].save) this.simSlots[this.simSlotActive].save = this._snapshotSlotSave();
+				this._applySlotToUI(this.simSlotActive);
+			} else {
+				this.simSlots[0].save = this._snapshotSlotSave();
+				this._applySlotToUI(0);
+			}
+			SIM.resetStats();
+			this._saveSlotsToStorage();
+			return true;
 		},
 		// full save for sharing / backup files: the current state plus every sim slot (A-G), so
 		// the receiver gets all friendly-side setups and not just the slot currently on screen
@@ -1457,6 +1529,7 @@ var UI_MAIN = Vue.createApp({
 		},
 		
 		updateResults: function(resultSim) {
+			this._resultsVer = (this._resultsVer || 0) + 1;
 			for (let key in this.results) {
 				if (key == 'errors' || key == 'warnings') continue;
 				if (Array.isArray(this.results[key])) {
