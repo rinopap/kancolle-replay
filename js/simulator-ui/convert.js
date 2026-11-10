@@ -15,10 +15,15 @@ window.CONVERT = {
 	_SAVE_VERSION_CURRENT: 2,
 	_SAVE_VERSION_EQUIP_SHIFT_20221109: 2,
 	
+	// keys that must never be copied from imported / shared data (prototype pollution)
+	_isUnsafeKey: function(key) {
+		return key === '__proto__' || key === 'constructor' || key === 'prototype';
+	},
 	_copyObj: function(objFrom,keys,objTo) {
 		keys = keys || Object.keys(objFrom);
 		objTo = objTo || {};
 		for (let key of keys) {
+			if (this._isUnsafeKey(key)) continue;
 			if (objFrom[key] == null) continue;
 			if (Array.isArray(objFrom[key])) objTo[key] = objFrom[key].slice();
 			else if (typeof objFrom[key] === 'object') objTo[key] = this._copyObj(objFrom[key],null,objTo[key]);
@@ -1172,8 +1177,8 @@ window.CONVERT = {
 	},
 	loadSaveSettings(settingsSave,settingsUI) {
 		for (let key in settingsSave) {
-			if (key == 'mechanics') continue;
-			if (settingsUI[key] === undefined) continue;
+			if (key == 'mechanics' || this._isUnsafeKey(key)) continue;
+			if (!Object.prototype.hasOwnProperty.call(settingsUI,key) || settingsUI[key] === undefined) continue;
 			if (Array.isArray(settingsUI[key])) {
 				for (let i=0; i<settingsUI[key].length; i++) {
 					if (settingsSave[key][i] != null) settingsUI[key][i] = settingsSave[key][i];
@@ -1238,6 +1243,7 @@ window.CONVERT = {
 		
 		if (dataSave.results) {
 			for (let key in dataSave.results) {
+				if (this._isUnsafeKey(key) || !Object.prototype.hasOwnProperty.call(dataUI.results,key)) continue;
 				dataUI.results[key] = dataSave.results[key];
 			}
 		}

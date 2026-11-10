@@ -258,7 +258,7 @@ var UI_MAIN = Vue.createApp({
 			perHPRes: 1, perTPRes: 1,
 			rta: { active: false, testMode: false, runs: 0, attempts: 0, avg: 0, stddev: 0, capped: 0, firstDayS: 0, dist: [] },
 			showTime: false,
-			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0, _minAllBasic: null, _maxAllBasic: null, _minAllBucket: null, _maxAllBucket: null, _samplesAll: [], _samplesAllBucket: [], _samplesStat: [], _samplesStatBucket: [], _kmT: [], _kmTB: [], _kmE: [], _numRetreatRuns: 0 },
+			time: { _timeAllBasic: 0, _timeCompletedBasic: 0, timeNodes: [], animations: [], animationsOther: [], _timeAllBucket: 0, _timeCompletedBucket: 0, _stddevAllBasic: 0, _stddevCompletedBasic: 0, _stddevAllBucket: 0, _stddevCompletedBucket: 0, _histogramAll: {}, _histogramAllBucket: {}, _histogramNumAll: 0, _minAllBasic: null, _maxAllBasic: null, _minAllBucket: null, _maxAllBucket: null, _samplesAll: [], _samplesAllBucket: [], _samplesStat: [], _samplesStatBucket: [], _kmT: [], _kmTB: [], _kmE: [], _numRetreatRuns: 0, _samplesDropped: 0 },
 			timeIncludeBucket: false,
 		},
 		
@@ -844,13 +844,16 @@ var UI_MAIN = Vue.createApp({
 				if (d > 0 && risk > 0) { S *= 1 - d/risk; pts.push([Math.round(1000*t)/1000,Math.round(1000*S*N)/1000]); }
 				risk -= d + c;
 			}
-			if (pts.length > 900) { // thin to roughly one point per x-pixel-ish cell, keeping the last point of each cell
-				let cell = pts[pts.length-1][0]/900, out = [], last = -1;
+			if (pts.length > 3000) {
+				// thin in 1500 narrow x-bins, keeping the first and the last point of each bin: for a step curve that
+				// keeps the exact outline at the bin resolution (the chart can be zoomed, so no coarser thinning)
+				let cell = pts[pts.length-1][0]/1500, out = [], lastBin = -1;
 				for (let p of pts) {
 					let c = Math.floor(p[0]/cell);
-					if (c == last) out[out.length-1] = p; else { out.push(p); last = c; }
+					if (c != lastBin) { out.push(p); lastBin = c; out.push(p); }
+					else out[out.length-1] = p;
 				}
-				pts = out;
+				pts = out.filter((p,i) => i == 0 || p !== out[i-1]);
 			}
 			return { n: N, pts: pts };
 		},
@@ -1012,7 +1015,7 @@ var UI_MAIN = Vue.createApp({
 				if (this._routeDrag) { this._routeDrag.active = true; this.routeDragging = node.id; }
 			},250);
 			if (ev.target && ev.target.setPointerCapture && ev.pointerId != null) {
-				try { this.$refs.routeSvg.setPointerCapture(ev.pointerId); } catch (e) {}
+				try { this.$refs.routeSvg.setPointerCapture(ev.pointerId); } catch (e) { console.warn('setPointerCapture failed',e); }
 			}
 		},
 		onRouteMove: function(ev) {
@@ -1331,16 +1334,22 @@ var UI_MAIN = Vue.createApp({
 			return JSON.stringify([CONVERT.uiToSave(this),slots,this.simSlotActive,sig]);
 		},
 		// everything that goes into one file: the whole simulator state, all slots A-G and their results
-		uiToFileData: function() {
+		uiToFileData: function(includeResults) {
+			if (includeResults === undefined) includeResults = true;
 			this._saveActiveSlot();
 			let toPlain = o => o ? JSON.parse(JSON.stringify(o)) : null;
 			return {
 				fileVersion: 1,
 				save: toPlain(CONVERT.uiToSave(this)),
 				active: this.simSlotActive,
-				slots: this.simSlots.map(s => ({ save: toPlain(s.save), enemySync: s.enemySync, summary: toPlain(s.summary), results: toPlain(s.results) })),
-				stateStr: this.fileStateStr(),
+				slots: this.simSlots.map(s => ({ save: toPlain(s.save), enemySync: s.enemySync, summary: includeResults ? toPlain(s.summary) : null, results: includeResults ? toPlain(s.results) : null })),
 			};
+		},
+		// same string as fileStateStr() but built from stored file data, for a file whose page was reloaded
+		fileStateStrFromData: function(d) {
+			let slots = (d.slots || []).map((s,i) => i == d.active ? null : ((s && s.save) || null));
+			let sig = (d.slots || []).map((s,i) => i == d.active ? 0 : (s && s.results ? 1 : 0));
+			return JSON.stringify([d.save,slots,d.active,sig]);
 		},
 		_freezeResultsBig: function(res) {
 			if (!res || !res.time) return res;
@@ -1719,6 +1728,7 @@ var UI_MAIN = Vue.createApp({
 				this.results.time._kmTB = Object.freeze(resultSim.time.all.samplesKmTB || []);
 				this.results.time._kmE = Object.freeze(resultSim.time.all.samplesKmE || []);
 				this.results.time._numRetreatRuns = resultSim.time.all.numRetreatRuns || 0;
+				this.results.time._samplesDropped = resultSim.time.all.droppedSamples || 0;
 				this.results.time._minAllBasic = resultSim.time.all.minTime;
 				this.results.time._maxAllBasic = resultSim.time.all.maxTime;
 				this.results.time._minAllBucket = resultSim.time.all.minTimeBucket;
@@ -3745,7 +3755,7 @@ var UI_OTHER = Vue.createApp({
 
 // several simulator pages can be open at once: the page that was operated last owns the saved working state
 var PAGE_ID = Math.random().toString(36).slice(2);
-function markPageActive() { try { localStorage.sim2_lastActive = PAGE_ID; } catch(e) {} }
+function markPageActive() { try { localStorage.sim2_lastActive = PAGE_ID; } catch(e) { /* storage blocked: this page just never claims ownership */ } }
 markPageActive();
 ['pointerdown','keydown','wheel','focus'].forEach(ev => window.addEventListener(ev,markPageActive,true));
 document.addEventListener('visibilitychange',() => { if (!document.hidden) markPageActive(); });

@@ -925,4 +925,5 @@ div.scrollAnchor > div {
 #divFiles .fmShare { background: #fff; padding: 14px 16px; border-radius: 6px; width: min(560px, 92vw); box-shadow: 0 4px 18px rgba(0,0,0,.35); }
 #divFiles .fmShareTitle { font-weight: bold; margin-bottom: 8px; }
 #divFiles .fmShare input[type=text] { width: 100%; box-sizing: border-box; }
+#divFooter .divDisclaimer { font-size: 11px; color: #667; margin-top: 4px; max-width: 900px; }
 #divFiles .fmShareRow { margin-top: 8px; }

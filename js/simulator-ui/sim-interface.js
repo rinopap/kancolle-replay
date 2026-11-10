@@ -6,6 +6,9 @@ var CONST = self.COMMON.getConst({
 	numSimDefault: 1000,
 	numSimMax: 10000000,
 	numSimStep: 500,
+	// per-run time samples (percentiles, Kaplan-Meier) are kept for at most this many runs in total;
+	// the runs beyond it still count in the totals and the histogram, so memory stays bounded for huge simulations
+	sampleCapTotal: 1000000,
 	
 	errorText: {
 		'bad_data': { txt: 'Bad format data' },
@@ -116,7 +119,7 @@ var SIM = {
 			nodes: [],
 			rta: { runs: 0, attempts: 0, capped: 0, sumSq: 0, firstDayS: 0, histogram: {} },
 			time: {
-				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, minTime: null, maxTime: null, minTimeBucket: null, maxTimeBucket: null, samples: [], samplesBucket: [], samplesStat: [], samplesStatBucket: [], samplesKmT: [], samplesKmTB: [], samplesKmE: [], numRetreatRuns: 0, animations: {}, histogram: {}, histogramBucket: {} },
+				all: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, minTime: null, maxTime: null, minTimeBucket: null, maxTimeBucket: null, samples: [], samplesBucket: [], samplesStat: [], samplesStatBucket: [], samplesKmT: [], samplesKmTB: [], samplesKmE: [], numRetreatRuns: 0, droppedSamples: 0, animations: {}, histogram: {}, histogramBucket: {} },
 				completed: { num: 0, time: 0, sumSq: 0, sumSqBucket: 0, animations: {}, histogram: {}, histogramBucket: {} },
 				nodes: [],
 			},
@@ -303,7 +306,8 @@ var SIM = {
 		{
 			// fastest / slowest single run (min/max are merged specially when combining worker results)
 			let t = this._results.time.all;
-			t.samples.push(resultsTime.time); t.samplesBucket.push(timeWithBucket); // exact per-run times (for percentiles)
+			if (t.samples.length < this._sampleCap) { t.samples.push(resultsTime.time); t.samplesBucket.push(timeWithBucket); } // exact per-run times (for percentiles)
+			else t.droppedSamples++;
 			t.minTime = t.minTime == null ? resultsTime.time : Math.min(t.minTime,resultsTime.time);
 			t.maxTime = t.maxTime == null ? resultsTime.time : Math.max(t.maxTime,resultsTime.time);
 			t.minTimeBucket = t.minTimeBucket == null ? timeWithBucket : Math.min(t.minTimeBucket,timeWithBucket);
@@ -1276,16 +1280,18 @@ var SIM = {
 			let tAll = this._results.time.all;
 			let bucketUnit = COMMON.TIME_BATTLE.ANIMATIONS.find(a => a.key == 'bucket').time;
 			let tBucket = resultsTime.time + rta.numBuckets*bucketUnit;
+			let kmRoom = tAll.samplesKmT.length < this._sampleCap;
 			if (retreatElapsed == null) {
-				tAll.samplesStat.push(resultsTime.time); tAll.samplesStatBucket.push(tBucket);
-				tAll.samplesKmT.push(resultsTime.time); tAll.samplesKmTB.push(tBucket); tAll.samplesKmE.push(success ? 1 : 0);
+				if (tAll.samplesStat.length < this._sampleCap) { tAll.samplesStat.push(resultsTime.time); tAll.samplesStatBucket.push(tBucket); }
+				if (kmRoom) { tAll.samplesKmT.push(resultsTime.time); tAll.samplesKmTB.push(tBucket); tAll.samplesKmE.push(success ? 1 : 0); }
 			} else {
 				tAll.numRetreatRuns++;
-				tAll.samplesKmT.push(retreatElapsed); tAll.samplesKmTB.push(retreatElapsed + retreatBuckets*bucketUnit); tAll.samplesKmE.push(0);
+				if (kmRoom) { tAll.samplesKmT.push(retreatElapsed); tAll.samplesKmTB.push(retreatElapsed + retreatBuckets*bucketUnit); tAll.samplesKmE.push(0); }
 			}
 		}
 	},
 	
+	_sampleCap: CONST.sampleCapTotal,
 	runStats: function(dataInput,callback) {
 		console.log(dataInput)
 		let includeAPI = this._isIncludeAPI(dataInput);
@@ -1382,6 +1388,7 @@ var SIM = {
 			if (key.startsWith('samples')) {
 				// per-run sample lists: concatenate across workers
 				resultsTo[key] = (resultsTo[key] || []).concat(resultsFrom[key]);
+				if (resultsTo[key].length > CONST.sampleCapTotal) resultsTo[key].length = CONST.sampleCapTotal;
 				continue;
 			}
 			if (key.startsWith('minTime') || key.startsWith('maxTime')) {
@@ -1403,6 +1410,7 @@ var SIM = {
 	},
 	runStatsWorker: function(workerS,dataInput,dataReplay,numSim) {
 		self.C = this._isIncludeAPI(dataInput) ? 2: false;
+		this._sampleCap = Math.max(1,Math.ceil(CONST.sampleCapTotal/Math.max(1,dataInput.numSimThread || 1)));
 		this._resetResults(dataInput.nodes.length);
 		this._load(dataInput);
 		this._inputPrev = dataInput;

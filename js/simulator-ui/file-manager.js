@@ -7,12 +7,17 @@ const UI_MAIN = COMMON.UI_MAIN;
 
 var FM_UI_KEY = 'sim2_fm_ui';
 var FM_DRAWER_W = 300;
+var FM_DIRTY_POLL_MS = 1500;   // how often unsaved changes of the open file are checked
+var FM_SETTLE_MS = 500;        // wait after loading a file before taking the baseline for change detection
+var FM_RESTORE_POLL_MS = 300;  // wait for the simulator to finish starting up
 
-var FM_DB = {
+var FILE_DB = {
 	db: null,
 	mem: { nodes: {}, data: {} },
 	ok: false,
 	open: function() {
+		// ask the browser not to evict this origin's storage when disk space runs low
+		try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e) { console.warn('fm: persist failed',e); }
 		return new Promise((resolve) => {
 			try {
 				let req = indexedDB.open('kcsim_files',1);
@@ -48,9 +53,10 @@ var FM_DB = {
 		if (!this.ok) return Promise.resolve(this.mem.data[id] ? JSON.parse(this.mem.data[id]) : null);
 		return this._req('data','readonly',os => os.get(id)).then(d => d || null);
 	},
-	putData: function(id,data) {
+	putData: function(id,data,isPlain) {
 		// plain JSON copy: IndexedDB cannot clone Vue proxies, and this also drops anything non-serialisable
-		let plain = JSON.parse(JSON.stringify(data));
+		// (skipped when the caller already built plain JSON data, which matters for large results)
+		let plain = isPlain ? data : JSON.parse(JSON.stringify(data));
 		if (!this.ok) { this.mem.data[id] = JSON.stringify(plain); return Promise.resolve(); }
 		return this._req('data','readwrite',os => os.put(plain,id)).then(() => this._notify({ kind: 'data', id: id }));
 	},
@@ -60,7 +66,7 @@ var FM_DB = {
 	},
 };
 
-var FM = Vue.createApp({
+var FILE_UI = Vue.createApp({
 	data: () => ({
 		ready: false,
 		persistent: true,
@@ -83,6 +89,7 @@ var FM = Vue.createApp({
 		share: { show: false, url: '', loading: false, error: false, copied: false, name: '' },
 		busy: false,
 		scratchWarned: false,
+		saveResults: true,
 	}),
 	computed: {
 		rows: function() {
@@ -111,7 +118,7 @@ var FM = Vue.createApp({
 		hasTabs: function() { return this.tabs.length > 0; },
 	},
 	methods: {
-		t: function(key,args) { return this.$t(key,args || []); },
+		tr: function(key,args) { return this.$t(key,args || []); },
 		nodeById: function(id) { return id == null ? null : this.nodes.find(n => n.id == id) || null; },
 		children: function(pid) {
 			return this.nodes.filter(n => (n.parent || null) == (pid || null)).sort((a,b) => {
@@ -143,10 +150,10 @@ var FM = Vue.createApp({
 		persistUI: function() {
 			try {
 				localStorage[FM_UI_KEY] = JSON.stringify({
-					expanded: this.expanded, pinned: this.pinned, drawerOpen: this.drawerOpen,
+					expanded: this.expanded, pinned: this.pinned, drawerOpen: this.drawerOpen, saveResults: this.saveResults,
 					tabs: this.tabs.map(t => t.id), activeId: this.activeId,
 				});
-			} catch(e) {}
+			} catch(e) { console.warn('fm: could not store UI state',e); }
 		},
 		applyLayout: function() {
 			let open = this.drawerOpen && this.pinned;
@@ -184,9 +191,9 @@ var FM = Vue.createApp({
 		},
 		onclickNewFolder: function(parent) {
 			if (parent === undefined) parent = this.parentForNew();
-			let node = { id: this.newId(), parent: parent, type: 'folder', name: this.uniqueName(parent,this.t('fm_new_folder')), order: Date.now(), updated: Date.now() };
+			let node = { id: this.newId(), parent: parent, type: 'folder', name: this.uniqueName(parent,this.tr('fm_new_folder')), order: Date.now(), updated: Date.now() };
 			this.nodes.push(node);
-			FM_DB.putNode(node);
+			FILE_DB.putNode(node);
 			if (parent) this.expanded[parent] = true;
 			this.drawerOpen = true;
 			this.selectedId = node.id;
@@ -196,13 +203,13 @@ var FM = Vue.createApp({
 		onclickNewFile: async function(parent) {
 			if (parent === undefined) parent = this.parentForNew();
 			if (!this.checkScratch()) return;
-			let node = { id: this.newId(), parent: parent, type: 'file', name: this.uniqueName(parent,this.t('fm_new_file')), order: Date.now(), updated: Date.now() };
+			let node = { id: this.newId(), parent: parent, type: 'file', name: this.uniqueName(parent,this.tr('fm_new_file')), order: Date.now(), updated: Date.now() };
 			// a new file starts out as a blank simulator
 			if (!(await this.leaveCurrent())) return;
 			this.nodes.push(node);
 			if (parent) this.expanded[parent] = true;
 			this.selectedId = node.id;
-			if (!UI_MAIN.loadFileData(null)) { this.nodes.pop(); this.showToast(this.t('fm_busy')); return; }
+			if (!UI_MAIN.loadFileData(null)) { this.nodes.pop(); this.showToast(this.tr('fm_busy')); return; }
 			this.tabs.push({ id: node.id, working: null, baseline: '', dirty: false });
 			this.activeId = node.id;
 			try { await this.writeCurrentTo(node); } catch(e) { this.saveFailed(e); }
@@ -212,13 +219,13 @@ var FM = Vue.createApp({
 		checkScratch: function() {
 			// no file open: whatever is on screen is an unsaved scratch state that opening a file would replace
 			if (this.activeId || this.scratchWarned) return true;
-			if (!window.confirm(this.t('fm_scratch_warn'))) return false;
+			if (!window.confirm(this.tr('fm_scratch_warn'))) return false;
 			this.scratchWarned = true;
 			return true;
 		},
 		// keeps unsaved edits of the open tab in memory before the screen is taken over by another file
 		leaveCurrent: async function() {
-			if (!UI_MAIN.canSim) { this.showToast(this.t('fm_busy')); return false; }
+			if (!UI_MAIN.canSim) { this.showToast(this.tr('fm_busy')); return false; }
 			let tab = this.tabs.find(t => t.id == this.activeId);
 			if (tab) {
 				this.refreshDirty();
@@ -234,36 +241,50 @@ var FM = Vue.createApp({
 			if (!(await this.leaveCurrent())) return;
 			let tab = this.tabs.find(t => t.id == id);
 			if (!tab) {
-				tab = { id: id, working: null, baseline: '', dirty: false };
-				this.tabs.push(tab);
+				this.tabs.push({ id: id, working: null, baseline: '', dirty: false });
+				tab = this.tabs.find(t => t.id == id); // the reactive object, not the plain one that was pushed
 			}
 			this.busy = true;
+			// what is on screen now, so a failed load cannot leave a blank screen that a later save writes into the old file
+			let backup = null;
 			try {
-				let data = tab.working || await FM_DB.getData(id);
+				let data = tab.working || await FILE_DB.getData(id);
+				if (!this.validFileData(data)) throw new Error('invalid file data');
+				backup = UI_MAIN.uiToFileData();
 				if (!UI_MAIN.loadFileData(data)) throw new Error('busy');
 				this.activeId = id;
 				this.selectedId = id;
 				if (!tab.working) {
 					tab.dirty = false;
 					// compare against the state as the UI normalised it, not the raw file
-					setTimeout(() => { if (this.activeId == id) { tab.baseline = UI_MAIN.fileStateStr(); tab.dirty = false; } },500);
+					setTimeout(() => { if (this.activeId == id) { tab.baseline = UI_MAIN.fileStateStr(); tab.dirty = false; } },FM_SETTLE_MS);
 				} else {
 					tab.dirty = true;
 				}
 			} catch(e) {
 				console.error(e);
-				this.tabs = this.tabs.filter(t => t !== tab);
-				this.showToast(this.t('fm_open_error'));
+				this.tabs = this.tabs.filter(t => t.id != id);
+				if (backup) { try { UI_MAIN.loadFileData(backup); } catch(e2) { console.error(e2); } }
+				this.showToast(this.tr('fm_open_error'));
 			}
 			this.busy = false;
 			this.persistUI();
+		},
+		// minimal shape check for data read from IndexedDB or imported files
+		validFileData: function(d) {
+			let isObj = o => o !== null && typeof o === 'object' && !Array.isArray(o);
+			if (!isObj(d) || !isObj(d.save)) return false;
+			if (d.slots != null && !Array.isArray(d.slots)) return false;
+			if ((d.slots || []).some(s => s !== null && !isObj(s))) return false;
+			if (d.active != null && !Number.isInteger(d.active)) return false;
+			return true;
 		},
 		onclickTab: function(id) { this.openFile(id); },
 		closeTab: async function(id) {
 			let tab = this.tabs.find(t => t.id == id);
 			if (!tab) return;
 			if (id == this.activeId) this.refreshDirty();
-			if (tab.dirty && !window.confirm(this.t('fm_close_dirty',[this.nodeName(id)]))) return;
+			if (tab.dirty && !window.confirm(this.tr('fm_close_dirty',[this.nodeName(id)]))) return;
 			let ind = this.tabs.indexOf(tab);
 			if (id == this.activeId) {
 				let next = this.tabs[ind+1] || this.tabs[ind-1];
@@ -290,34 +311,37 @@ var FM = Vue.createApp({
 
 		// ---- save ----
 		writeCurrentTo: async function(node) {
-			let data = UI_MAIN.uiToFileData();
-			await FM_DB.putData(node.id,data);
+			let data = UI_MAIN.uiToFileData(this.saveResults);
+			await FILE_DB.putData(node.id,data,true);
+			let baseline = UI_MAIN.fileStateStr();
 			node.updated = Date.now();
-			await FM_DB.putNode(node);
+			await FILE_DB.putNode(node);
 			let tab = this.tabs.find(t => t.id == node.id);
-			if (tab) { tab.baseline = data.stateStr; tab.dirty = false; tab.working = null; }
+			if (tab) { tab.baseline = baseline; tab.dirty = false; tab.working = null; tab.remoteChanged = false; }
 			return data;
 		},
 		onclickSave: async function() {
-			if (!UI_MAIN.canSim) { this.showToast(this.t('fm_busy')); return; }
+			if (!UI_MAIN.canSim) { this.showToast(this.tr('fm_busy')); return; }
 			let node = this.nodeById(this.activeId);
 			if (!node) return this.onclickSaveAs();
+			let curTab = this.tabs.find(t => t.id == this.activeId);
+			if (curTab && curTab.remoteChanged && !window.confirm(this.tr('fm_overwrite_confirm',[node.name]))) return;
 			try {
 				await this.writeCurrentTo(node);
-				this.showToast(this.t('fm_saved',[node.name]));
+				this.showToast(this.tr('fm_saved',[node.name]));
 			} catch(e) {
 				this.saveFailed(e);
 			}
 		},
 		saveFailed: function(e) {
 			console.error(e);
-			this.showToast(this.t('fm_save_error') + ' (' + ((e && (e.name || e.message)) ? [e.name,e.message].filter(Boolean).join(': ') : String(e)).slice(0,120) + ')');
+			this.showToast(this.tr('fm_save_error') + ' (' + ((e && (e.name || e.message)) ? [e.name,e.message].filter(Boolean).join(': ') : String(e)).slice(0,120) + ')');
 		},
 		onclickSaveAs: async function() {
-			if (!UI_MAIN.canSim) { this.showToast(this.t('fm_busy')); return; }
+			if (!UI_MAIN.canSim) { this.showToast(this.tr('fm_busy')); return; }
 			let cur = this.nodeById(this.activeId);
 			let parent = cur ? (cur.parent || null) : this.parentForNew();
-			let name = window.prompt(this.t('fm_saveas_prompt'),this.uniqueName(parent,cur ? cur.name : this.t('fm_new_file')));
+			let name = window.prompt(this.tr('fm_saveas_prompt'),this.uniqueName(parent,cur ? cur.name : this.tr('fm_new_file')));
 			if (name == null) return;
 			name = name.trim();
 			if (!name) return;
@@ -335,7 +359,7 @@ var FM = Vue.createApp({
 				if (parent) this.expanded[parent] = true;
 				this.drawerOpen = true;
 				this.persistUI();
-				this.showToast(this.t('fm_saved',[node.name]));
+				this.showToast(this.tr('fm_saved',[node.name]));
 			} catch(e) {
 				this.nodes = this.nodes.filter(n => n !== node);
 				this.saveFailed(e);
@@ -346,12 +370,12 @@ var FM = Vue.createApp({
 			if (!node) return;
 			this.ctx.show = false;
 			let copy = async (src,parent,rename) => {
-				let n = { id: this.newId(), parent: parent, type: src.type, name: rename ? this.uniqueName(parent,this.t('fm_copy_of',[src.name])) : src.name, order: Date.now(), updated: Date.now() };
+				let n = { id: this.newId(), parent: parent, type: src.type, name: rename ? this.uniqueName(parent,this.tr('fm_copy_of',[src.name])) : src.name, order: Date.now(), updated: Date.now() };
 				this.nodes.push(n);
-				await FM_DB.putNode(n);
+				await FILE_DB.putNode(n);
 				if (src.type == 'file') {
-					let d = await FM_DB.getData(src.id);
-					if (d) await FM_DB.putData(n.id,d);
+					let d = await FILE_DB.getData(src.id);
+					if (d) await FILE_DB.putData(n.id,d);
 				} else {
 					for (let c of this.children(src.id)) await copy(c,n.id,false);
 				}
@@ -361,7 +385,7 @@ var FM = Vue.createApp({
 				let n = await copy(node,node.parent || null,true);
 				this.selectedId = n.id;
 				if (node.parent) this.expanded[node.parent] = true;
-			} catch(e) { console.error(e); this.showToast(this.t('fm_save_error')); }
+			} catch(e) { console.error(e); this.showToast(this.tr('fm_save_error')); }
 		},
 
 		// ---- rename / delete / move ----
@@ -385,7 +409,7 @@ var FM = Vue.createApp({
 			if (!name || name == n.name) return;
 			n.name = name;
 			n.updated = Date.now();
-			FM_DB.putNode(n);
+			FILE_DB.putNode(n);
 		},
 		cancelRename: function() { this.renameId = null; },
 		onclickDelete: async function(id) {
@@ -395,15 +419,23 @@ var FM = Vue.createApp({
 			let ids = [id];
 			let collect = pid => { for (let c of this.nodes.filter(n => n.parent == pid)) { ids.push(c.id); collect(c.id); } };
 			collect(id);
-			let msg = node.type == 'folder' ? this.t('fm_delete_folder',[node.name,ids.length-1]) : this.t('fm_delete_file',[node.name]);
+			let msg = node.type == 'folder' ? this.tr('fm_delete_folder',[node.name,ids.length-1]) : this.tr('fm_delete_file',[node.name]);
 			if (!window.confirm(msg)) return;
-			for (let did of ids) {
-				this.tabs = this.tabs.filter(t => t.id != did);
-				await FM_DB.deleteNode(did);
+			// children first; the tree only forgets what was really deleted, so a failure cannot leave it out of step with the DB
+			let done = [];
+			try {
+				for (let did of ids.slice().reverse()) {
+					await FILE_DB.deleteNode(did);
+					done.push(did);
+				}
+			} catch(e) {
+				console.error(e);
+				this.showToast(this.tr('fm_delete_error'));
 			}
-			this.nodes = this.nodes.filter(n => !ids.includes(n.id));
-			if (ids.includes(this.activeId)) this.activeId = null;
-			if (ids.includes(this.selectedId)) this.selectedId = null;
+			this.tabs = this.tabs.filter(t => !done.includes(t.id));
+			this.nodes = this.nodes.filter(n => !done.includes(n.id));
+			if (done.includes(this.activeId)) this.activeId = null;
+			if (done.includes(this.selectedId)) this.selectedId = null;
 			this.persistUI();
 		},
 		onclickDeleteTree: function() { if (this.selectedId) this.onclickDelete(this.selectedId); },
@@ -411,7 +443,7 @@ var FM = Vue.createApp({
 		onDragStart: function(node,e) {
 			this.dragId = node.id;
 			e.dataTransfer.effectAllowed = 'move';
-			try { e.dataTransfer.setData('text/plain',node.id); } catch(err) {}
+			try { e.dataTransfer.setData('text/plain',node.id); } catch(err) { console.warn('fm: setData failed',err); }
 		},
 		onDragOver: function(node,e) {
 			if (!this.dragId || this.dragId == node.id || this.isDescendant(node.id,this.dragId)) { this.drop = { id: null, pos: null }; return; }
@@ -458,7 +490,7 @@ var FM = Vue.createApp({
 			siblings.splice(at,0,node);
 			siblings.forEach((n,i) => {
 				let o = (i+1)*10;
-				if (n.order != o || n.id == id) { n.order = o; FM_DB.putNode(n); }
+				if (n.order != o || n.id == id) { n.order = o; FILE_DB.putNode(n); }
 			});
 			if (parent) this.expanded[parent] = true;
 			this.persistUI();
@@ -487,7 +519,7 @@ var FM = Vue.createApp({
 			let tab = this.tabs.find(t => t.id == id);
 			if (id == this.activeId && UI_MAIN.canSim) return UI_MAIN.uiToFileData();
 			if (tab && tab.working) return tab.working;
-			return FM_DB.getData(id);
+			return FILE_DB.getData(id);
 		},
 		buildExportTree: async function(node) {
 			if (node.type == 'file') return { type: 'file', name: node.name, data: await this.fileDataFor(node.id) };
@@ -512,7 +544,7 @@ var FM = Vue.createApp({
 				let tree = await this.buildExportTree(node);
 				let safe = node.name.replace(/[\\/:*?"<>|]/g,'_');
 				this.download(safe + (node.type == 'folder' ? '.kcsim-folder.json' : '.kcsim.json'),{ kcsimFiles: 1, tree: tree });
-			} catch(e) { console.error(e); this.showToast(this.t('fm_export_error')); }
+			} catch(e) { console.error(e); this.showToast(this.tr('fm_export_error')); }
 		},
 		onclickExportAll: async function() {
 			this.ctx.show = false;
@@ -520,7 +552,7 @@ var FM = Vue.createApp({
 				let kids = [];
 				for (let c of this.children(null)) kids.push(await this.buildExportTree(c));
 				this.download('kcsim-all.kcsim-folder.json',{ kcsimFiles: 1, tree: { type: 'folder', name: 'all', children: kids, isRoot: true } });
-			} catch(e) { console.error(e); this.showToast(this.t('fm_export_error')); }
+			} catch(e) { console.error(e); this.showToast(this.tr('fm_export_error')); }
 		},
 		onclickImport: function() {
 			this.ctx.show = false;
@@ -532,11 +564,14 @@ var FM = Vue.createApp({
 			let files = Array.from(e.target.files || []);
 			let parent = this._importParent === undefined ? null : this._importParent, count = 0;
 			let add = async (item,par) => {
-				let n = { id: this.newId(), parent: par, type: item.type == 'folder' ? 'folder' : 'file', name: this.uniqueName(par,String(item.name || this.t('fm_new_file'))), order: Date.now()+count, updated: Date.now() };
+				let n = { id: this.newId(), parent: par, type: item.type == 'folder' ? 'folder' : 'file', name: this.uniqueName(par,String(item.name || this.tr('fm_new_file'))), order: Date.now()+count, updated: Date.now() };
 				count++;
 				this.nodes.push(n);
-				await FM_DB.putNode(n);
-				if (n.type == 'file') await FM_DB.putData(n.id,item.data || null);
+				await FILE_DB.putNode(n);
+				if (n.type == 'file') {
+					if (!this.validFileData(item.data)) throw new Error('invalid file data');
+					await FILE_DB.putData(n.id,item.data);
+				}
 				else for (let c of (item.children || [])) await add(c,n.id);
 				return n;
 			};
@@ -550,10 +585,10 @@ var FM = Vue.createApp({
 				if (parent) this.expanded[parent] = true;
 				this.drawerOpen = true;
 				this.persistUI();
-				this.showToast(this.t('fm_imported'));
+				this.showToast(this.tr('fm_imported'));
 			} catch(err) {
 				console.error(err);
-				this.showToast(this.t('fm_import_error'));
+				this.showToast(this.tr('fm_import_error'));
 			}
 		},
 
@@ -595,29 +630,37 @@ var FM = Vue.createApp({
 				this.share.copied = true;
 			} catch(e) {
 				let el = this.$refs.shareInput;
-				if (el) { el.select(); try { this.share.copied = document.execCommand('copy'); } catch(err) {} }
+				if (el) { el.select(); try { this.share.copied = document.execCommand('copy'); } catch(err) { console.warn('fm: copy failed',err); } }
 			}
 		},
 
 		// ---- sync between several open simulator pages ----
 		// whichever page saved last wins: the others reload the file list and, for a file they have open without
 		// unsaved changes, the file itself
-		broadcast: function(msg) { try { if (this._bc) this._bc.postMessage(msg); } catch(e) {} },
+		broadcast: function(msg) { try { if (this._bc) this._bc.postMessage(msg); } catch(e) { console.warn('fm: broadcast failed',e); } },
 		onRemoteChange: async function(msg) {
 			try {
-				this.nodes = await FM_DB.getAllNodes();
+				this.nodes = await FILE_DB.getAllNodes();
 				this.tabs = this.tabs.filter(t => this.nodeById(t.id));
 				if (this.activeId && !this.nodeById(this.activeId)) this.activeId = null;
 				if (this.selectedId && !this.nodeById(this.selectedId)) this.selectedId = null;
+				if (msg && msg.kind == 'data') {
+					// a tab with unsaved changes of its own is not overwritten; it is flagged so that saving asks first
+					let other = this.tabs.find(t => t.id == msg.id && t.id != this.activeId && t.working);
+					if (other) { other.remoteChanged = true; this.showToast(this.tr('fm_conflict',[this.nodeName(other.id)])); }
+				}
 				if (msg && msg.kind == 'data' && msg.id == this.activeId && UI_MAIN.canSim) {
 					this.refreshDirty();
 					let tab = this.tabs.find(t => t.id == this.activeId);
-					if (tab && !tab.dirty) {
-						let data = await FM_DB.getData(this.activeId);
-						if (data && UI_MAIN.loadFileData(data)) {
+					if (tab && tab.dirty) {
+						tab.remoteChanged = true;
+						this.showToast(this.tr('fm_conflict',[this.nodeName(tab.id)]));
+					} else if (tab) {
+						let data = await FILE_DB.getData(this.activeId);
+						if (this.validFileData(data) && UI_MAIN.loadFileData(data)) {
 							tab.baseline = '';
-							setTimeout(() => { tab.baseline = UI_MAIN.fileStateStr(); tab.dirty = false; },500);
-							this.showToast(this.t('fm_reloaded'));
+							setTimeout(() => { tab.baseline = UI_MAIN.fileStateStr(); tab.dirty = false; },FM_SETTLE_MS);
+							this.showToast(this.tr('fm_reloaded'));
 						}
 					}
 				}
@@ -626,12 +669,13 @@ var FM = Vue.createApp({
 		
 		// ---- startup ----
 		init: async function() {
-			this.persistent = await FM_DB.open();
-			try { this.nodes = await FM_DB.getAllNodes(); } catch(e) { console.error(e); this.nodes = []; }
+			this.persistent = await FILE_DB.open();
+			try { this.nodes = await FILE_DB.getAllNodes(); } catch(e) { console.error(e); this.nodes = []; }
 			let ui = {};
-			try { ui = JSON.parse(localStorage[FM_UI_KEY] || '{}'); } catch(e) {}
+			try { ui = JSON.parse(localStorage[FM_UI_KEY] || '{}'); } catch(e) { console.warn('fm: bad stored UI state',e); }
 			this.expanded = ui.expanded || {};
 			this.pinned = !!ui.pinned;
+			this.saveResults = ui.saveResults !== false;
 			this.drawerOpen = !!ui.drawerOpen;
 			this.tabs = (ui.tabs || []).filter(id => this.nodeById(id)).map(id => ({ id: id, working: null, baseline: '', dirty: false }));
 			if (ui.activeId && this.tabs.find(t => t.id == ui.activeId)) {
@@ -641,19 +685,19 @@ var FM = Vue.createApp({
 				let wait = setInterval(async () => {
 					if (!UI_MAIN.canSave || !UI_MAIN.canSim) return;
 					clearInterval(wait);
-					let d = await FM_DB.getData(tab.id);
-					tab.baseline = d && d.stateStr ? d.stateStr : UI_MAIN.fileStateStr();
+					let d = await FILE_DB.getData(tab.id);
+					tab.baseline = this.validFileData(d) ? UI_MAIN.fileStateStrFromData(d) : UI_MAIN.fileStateStr();
 					this.refreshDirty();
-				},300);
+				},FM_RESTORE_POLL_MS);
 			}
 			try {
 				this._bc = new BroadcastChannel('kcsim_files');
 				this._bc.onmessage = (ev) => this.onRemoteChange(ev.data);
-				FM_DB.onWrite = (msg) => this.broadcast(msg);
-			} catch(e) {}
+				FILE_DB.onWrite = (msg) => this.broadcast(msg);
+			} catch(e) { console.warn('fm: BroadcastChannel unavailable',e); }
 			this.applyLayout();
 			this.ready = true;
-			setInterval(() => this.refreshDirty(),1500);
+			setInterval(() => { if (!document.hidden) this.refreshDirty(); },FM_DIRTY_POLL_MS);
 			document.addEventListener('keydown',(e) => {
 				if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() == 's') {
 					e.preventDefault();
@@ -678,6 +722,6 @@ var FM = Vue.createApp({
 	},
 }).use(COMMON.i18n).mount('#divFiles');
 
-COMMON.UI_FILES = FM;
+COMMON.UI_FILES = FILE_UI;
 
 });

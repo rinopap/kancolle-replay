@@ -22,7 +22,7 @@
 	<script src="js/vue-i18n.global.prod.js"></script>
 	<script src="reader/lz-string.js"></script>
 	<script src="js/simulator-ui/common.js"></script>
-	<script src="https://cdn.jsdelivr.net/npm/lzma/src/lzma_worker.min.js"></script>
+	<script src="js/lib/lzma_worker-min.js"></script>
 	<script src="js/html2canvas-fix.min.js"></script>
 </head>
 <body style="display:none">
@@ -690,6 +690,7 @@
 							<tr><th style="text-align:right">{{$t('rta_first_day_s')}}</th><td><span class="resultBold">{{results.rta.firstDayS}}%</span></td></tr>
 							<tr v-show="results.rta.capped"><th style="text-align:right">{{$t('rta_capped')}}</th><td class="noteBold">{{results.rta.capped}}</td></tr>
 							<tr v-show="results.showTime"><th style="text-align:right">{{$t('rta_total_time')}}</th><td><span class="resultBold">{{$t('x_sec',[resultsTimeAll])}}</span> (±{{$t('x_sec',[resultsTimeStddevAll])}})</td></tr>
+							<tr v-if="results.showTime && rtaStat && results.time._samplesDropped > 0"><td colspan="2" class="note" style="color:#a60">{{$t('rta_sample_cap_note',[rtaStat.n.toLocaleString()])}}</td></tr>
 							<tr v-if="results.showTime && rtaStat && results.rta.testMode"><th style="text-align:right">{{$t('rta_stat_runs')}}</th><td>{{rtaStat.n}} / {{results.rta.runs}} <span class="note" style="color:inherit">({{$t('rta_stat_runs_note')}})</span></td></tr>
 							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_fastest_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.min])}}</td></tr>
 							<tr v-if="results.showTime && resultsTimeExtremes"><th style="text-align:right">{{$t('rta_p05_time')}}</th><td>{{$t('x_sec',[resultsTimeExtremes.p05])}}</td></tr>
@@ -1013,6 +1014,7 @@
 				<template v-slot:link_github><a href="https://github.com/KC3Kai/kancolle-replay/issues">Github</a></template>
 				<template v-slot:link_discord><a href="https://discord.gg/RtSadWM">English KC Discord</a></template>
 			</i18n-t></div>
+			<div class="divDisclaimer">{{$t('footer_disclaimer')}}</div>
 			<div class="divEditorCredit">{{$t('editor_credit')}}: <a href="https://github.com/rinopap" target="_blank">rinopap</a></div>
 		</div>
 	</div>
@@ -1916,6 +1918,7 @@
 				<div v-show="!isReplayImport">
 					<hr>
 					<input type="button" :value="$t('create_shared_link')" :disabled="shareURLLoading" @click="onclickShareURL"/>
+					<div class="note">{{$t('share_external_notice')}}</div>
 					<!-- <span v-show="$i18n.locale=='ja'">&nbsp;<a href="https://twitter.com/momemi_kc/status/1811049862663684576" target="_blank">(!)</a></span> -->
 					<!-- <span v-show="$i18n.locale!='ja'" style="color:darkorange">&nbsp;<span class="tooltip" :title="$t('create_shared_link_note')">(!)</span></span> -->
 					<span class="note">&nbsp;{{$t('share_includes_slots')}}</span>
@@ -2263,32 +2266,32 @@
 	
 	<div id="divFiles" v-cloak>
 		<div class="fmTabBar">
-			<button type="button" class="fmBurger" :class="{ on: drawerOpen }" :title="t('fm_toggle_drawer')" @click.stop="onclickToggleDrawer">&#9776;</button>
+			<button type="button" class="fmBurger" :class="{ on: drawerOpen }" :title="tr('fm_toggle_drawer')" @click.stop="onclickToggleDrawer">&#9776;</button>
 			<div class="fmTabs">
 				<div v-for="tab in tabs" :key="tab.id" class="fmTab" :class="{ active: tab.id == activeId }" :title="nodeName(tab.id)" @click="onclickTab(tab.id)" @auxclick.middle.prevent="closeTab(tab.id)">
-					<span class="fmTabIcon">&#128196;</span><span class="fmTabName">{{nodeName(tab.id)}}</span><span class="fmDirty" v-show="tab.dirty" :title="t('fm_unsaved')">&#9679;</span>
+					<span class="fmTabIcon">&#128196;</span><span class="fmTabName">{{nodeName(tab.id)}}</span><span class="fmDirty" v-show="tab.dirty" :title="tr('fm_unsaved')">&#9679;</span><span class="fmDirty" v-show="tab.remoteChanged" :title="tr('fm_conflict_tip')">&#9888;</span>
 					<span class="fmTabClose" @click.stop="closeTab(tab.id)">&#10005;</span>
 				</div>
-				<div class="fmTabHint" v-if="!tabs.length">{{t('fm_no_tabs')}}</div>
+				<div class="fmTabHint" v-if="!tabs.length">{{tr('fm_no_tabs')}}</div>
 			</div>
-			<button type="button" class="fmBtn fmPlus" :title="t('fm_new_file')" @click="onclickNewFile()">&#65291;</button>
-			<button type="button" class="fmBtn" :title="t('fm_save_tip')" @click="onclickSave">{{t('fm_save')}}</button>
-			<button type="button" class="fmBtn" @click="onclickSaveAs">{{t('fm_save_as')}}</button>
+			<button type="button" class="fmBtn fmPlus" :title="tr('fm_new_file')" @click="onclickNewFile()">&#65291;</button>
+			<button type="button" class="fmBtn" :title="tr('fm_save_tip')" @click="onclickSave">{{tr('fm_save')}}</button>
+			<button type="button" class="fmBtn" @click="onclickSaveAs">{{tr('fm_save_as')}}</button>
 		</div>
 		<div class="fmDrawer" v-show="drawerOpen" @click.stop @contextmenu.prevent>
 			<div class="fmDrawerHead">
-				<span class="fmDrawerTitle">{{t('fm_files')}}</span>
+				<span class="fmDrawerTitle">{{tr('fm_files')}}</span>
 				<span class="fmTools">
-					<button type="button" :title="t('fm_new_file')" @click="onclickNewFile()">&#128196;+</button>
-					<button type="button" :title="t('fm_new_folder')" @click="onclickNewFolder()">&#128193;+</button>
-					<button type="button" :title="t('fm_import')" @click="onclickImport()">&#8593;</button>
-					<button type="button" :title="t('fm_export_all')" @click="onclickExportAll()">&#8595;</button>
-					<button type="button" :title="t('fm_pin')" :class="{ on: pinned }" @click="onclickPin">&#128204;</button>
-					<button type="button" :title="t('fm_close')" @click="onclickToggleDrawer">&#10005;</button>
+					<button type="button" :title="tr('fm_new_file')" @click="onclickNewFile()">&#128196;+</button>
+					<button type="button" :title="tr('fm_new_folder')" @click="onclickNewFolder()">&#128193;+</button>
+					<button type="button" :title="tr('fm_import')" @click="onclickImport()">&#8593;</button>
+					<button type="button" :title="tr('fm_export_all')" @click="onclickExportAll()">&#8595;</button>
+					<button type="button" :title="tr('fm_pin')" :class="{ on: pinned }" @click="onclickPin">&#128204;</button>
+					<button type="button" :title="tr('fm_close')" @click="onclickToggleDrawer">&#10005;</button>
 				</span>
 			</div>
-			<div class="fmSearch"><input type="text" v-model="search" :placeholder="t('fm_search')"/></div>
-			<div class="fmWarn" v-if="!persistent">{{t('fm_no_idb')}}</div>
+			<div class="fmSearch"><input type="text" v-model="search" :placeholder="tr('fm_search')"/></div>
+			<div class="fmWarn" v-if="!persistent">{{tr('fm_no_idb')}}</div>
 			<div class="fmTree" :class="{ dropRoot: drop.pos == 'root' }" @contextmenu.prevent="onctxEmpty($event)" @dragover="onDragOverRoot($event)" @drop="onDropRoot($event)">
 				<div v-for="row in rows" :key="row.node.id" class="fmRow" :class="{ selected: row.node.id == selectedId, active: row.node.id == activeId, folder: row.node.type == 'folder', dropInto: drop.id == row.node.id && drop.pos == 'into', dropBefore: drop.id == row.node.id && drop.pos == 'before', dropAfter: drop.id == row.node.id && drop.pos == 'after', dragging: dragId == row.node.id }"
 					:style="{ paddingLeft: (8+row.depth*16)+'px' }" draggable="true"
@@ -2301,41 +2304,41 @@
 					<span v-else class="fmName">{{row.node.name}}</span>
 					<span class="fmDirty" v-if="tabs.find(t => t.id == row.node.id && t.dirty)">&#9679;</span>
 				</div>
-				<div class="fmEmpty" v-if="!rows.length">{{search ? t('fm_no_match') : t('fm_empty')}}</div>
+				<div class="fmEmpty" v-if="!rows.length">{{search ? tr('fm_no_match') : tr('fm_empty')}}</div>
 			</div>
-			<div class="fmFoot">{{t('fm_foot')}}</div>
+			<div class="fmFoot"><label><input type="checkbox" v-model="saveResults" @change="persistUI"/>{{tr('fm_save_results')}}</label><br>{{tr('fm_foot')}}</div>
 		</div>
 		<div class="fmCtx" v-if="ctx.show" :style="{ left: ctx.x+'px', top: ctx.y+'px' }" @click.stop>
 			<template v-if="ctxNode()">
-				<div v-if="ctxNode().type == 'file'" @click="ctx.show=false; openFile(ctx.id)">{{t('fm_open')}}</div>
-				<div @click="startRename(ctx.id)">{{t('fm_rename')}}</div>
-				<div @click="onclickDuplicate(ctx.id)">{{t('fm_duplicate')}}</div>
-				<div v-if="ctxNode().type == 'file'" @click="onclickShare(ctx.id)">{{t('fm_share_url')}}</div>
-				<div @click="onclickExport(ctx.id)">{{t('fm_export')}}</div>
+				<div v-if="ctxNode().type == 'file'" @click="ctx.show=false; openFile(ctx.id)">{{tr('fm_open')}}</div>
+				<div @click="startRename(ctx.id)">{{tr('fm_rename')}}</div>
+				<div @click="onclickDuplicate(ctx.id)">{{tr('fm_duplicate')}}</div>
+				<div v-if="ctxNode().type == 'file'" @click="onclickShare(ctx.id)">{{tr('fm_share_url')}}</div>
+				<div @click="onclickExport(ctx.id)">{{tr('fm_export')}}</div>
 				<hr/>
 			</template>
-			<div @click="ctx.show=false; onclickNewFile(ctxParent())">{{t('fm_new_file')}}</div>
-			<div @click="ctx.show=false; onclickNewFolder(ctxParent())">{{t('fm_new_folder')}}</div>
-			<div @click="selectedId = ctxParent(); onclickImport()">{{t('fm_import')}}</div>
-			<div @click="onclickExportAll()">{{t('fm_export_all')}}</div>
+			<div @click="ctx.show=false; onclickNewFile(ctxParent())">{{tr('fm_new_file')}}</div>
+			<div @click="ctx.show=false; onclickNewFolder(ctxParent())">{{tr('fm_new_folder')}}</div>
+			<div @click="selectedId = ctxParent(); onclickImport()">{{tr('fm_import')}}</div>
+			<div @click="onclickExportAll()">{{tr('fm_export_all')}}</div>
 			<template v-if="ctxNode()">
 				<hr/>
-				<div class="danger" @click="onclickDelete(ctx.id)">{{t('fm_delete')}}</div>
+				<div class="danger" @click="onclickDelete(ctx.id)">{{tr('fm_delete')}}</div>
 			</template>
 		</div>
 		<input type="file" ref="importInput" accept=".json,application/json" multiple style="display:none" @change="onchangeImport"/>
 		<div class="fmToast" v-if="toast">{{toast}}</div>
 		<div class="fmShareBack" v-if="share.show" @click.self="share.show=false">
 			<div class="fmShare">
-				<div class="fmShareTitle">{{t('fm_share_title',[share.name])}}</div>
-				<div v-if="share.loading">{{t('fm_share_loading')}}</div>
-				<div v-else-if="share.error" style="color:#b00">{{t('fm_share_error')}}</div>
+				<div class="fmShareTitle">{{tr('fm_share_title',[share.name])}}</div>
+				<div v-if="share.loading">{{tr('fm_share_loading')}}</div>
+				<div v-else-if="share.error" style="color:#b00">{{tr('fm_share_error')}}</div>
 				<template v-else>
 					<input type="text" ref="shareInput" readonly :value="share.url" @focus="$event.target.select()"/>
-					<div class="fmShareRow"><button type="button" @click="onclickCopyShare">{{t('fm_share_copy')}}</button> <span v-show="share.copied" style="color:#2a8a2a">{{t('fm_share_copied')}}</span></div>
-					<div class="note">{{t('fm_share_note')}}</div>
+					<div class="fmShareRow"><button type="button" @click="onclickCopyShare">{{tr('fm_share_copy')}}</button> <span v-show="share.copied" style="color:#2a8a2a">{{tr('fm_share_copied')}}</span></div>
+					<div class="note">{{tr('fm_share_note')}}</div>
 				</template>
-				<div class="fmShareRow"><button type="button" @click="share.show=false">{{t('fm_close')}}</button></div>
+				<div class="fmShareRow"><button type="button" @click="share.show=false">{{tr('fm_close')}}</button></div>
 			</div>
 		</div>
 	</div>
