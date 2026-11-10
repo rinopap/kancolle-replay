@@ -41,19 +41,22 @@ var FM_DB = {
 	putNode: function(node) {
 		let n = JSON.parse(JSON.stringify(node));
 		if (!this.ok) { this.mem.nodes[n.id] = n; return Promise.resolve(); }
-		return this._req('nodes','readwrite',os => os.put(n));
+		return this._req('nodes','readwrite',os => os.put(n)).then(() => this._notify({ kind: 'node', id: n.id }));
 	},
+	_notify: function(msg) { if (this.onWrite) this.onWrite(msg); },
 	getData: function(id) {
 		if (!this.ok) return Promise.resolve(this.mem.data[id] ? JSON.parse(this.mem.data[id]) : null);
 		return this._req('data','readonly',os => os.get(id)).then(d => d || null);
 	},
 	putData: function(id,data) {
-		if (!this.ok) { this.mem.data[id] = JSON.stringify(data); return Promise.resolve(); }
-		return this._req('data','readwrite',os => os.put(data,id));
+		// plain JSON copy: IndexedDB cannot clone Vue proxies, and this also drops anything non-serialisable
+		let plain = JSON.parse(JSON.stringify(data));
+		if (!this.ok) { this.mem.data[id] = JSON.stringify(plain); return Promise.resolve(); }
+		return this._req('data','readwrite',os => os.put(plain,id)).then(() => this._notify({ kind: 'data', id: id }));
 	},
 	deleteNode: function(id) {
 		if (!this.ok) { delete this.mem.nodes[id]; delete this.mem.data[id]; return Promise.resolve(); }
-		return Promise.all([ this._req('nodes','readwrite',os => os.delete(id)), this._req('data','readwrite',os => os.delete(id)) ]);
+		return Promise.all([ this._req('nodes','readwrite',os => os.delete(id)), this._req('data','readwrite',os => os.delete(id)) ]).then(() => this._notify({ kind: 'delete', id: id }));
 	},
 };
 
@@ -198,13 +201,12 @@ var FM = Vue.createApp({
 			if (!(await this.leaveCurrent())) return;
 			this.nodes.push(node);
 			if (parent) this.expanded[parent] = true;
-			this.drawerOpen = true;
 			this.selectedId = node.id;
 			if (!UI_MAIN.loadFileData(null)) { this.nodes.pop(); this.showToast(this.t('fm_busy')); return; }
 			this.tabs.push({ id: node.id, working: null, baseline: '', dirty: false });
 			this.activeId = node.id;
-			await this.writeCurrentTo(node);
-			this.startRename(node.id);
+			try { await this.writeCurrentTo(node); } catch(e) { this.saveFailed(e); }
+			if (this.drawerOpen) this.startRename(node.id);
 			this.persistUI();
 		},
 		checkScratch: function() {
@@ -304,9 +306,12 @@ var FM = Vue.createApp({
 				await this.writeCurrentTo(node);
 				this.showToast(this.t('fm_saved',[node.name]));
 			} catch(e) {
-				console.error(e);
-				this.showToast(this.t('fm_save_error'));
+				this.saveFailed(e);
 			}
+		},
+		saveFailed: function(e) {
+			console.error(e);
+			this.showToast(this.t('fm_save_error') + ' (' + ((e && (e.name || e.message)) ? [e.name,e.message].filter(Boolean).join(': ') : String(e)).slice(0,120) + ')');
 		},
 		onclickSaveAs: async function() {
 			if (!UI_MAIN.canSim) { this.showToast(this.t('fm_busy')); return; }
@@ -332,9 +337,8 @@ var FM = Vue.createApp({
 				this.persistUI();
 				this.showToast(this.t('fm_saved',[node.name]));
 			} catch(e) {
-				console.error(e);
 				this.nodes = this.nodes.filter(n => n !== node);
-				this.showToast(this.t('fm_save_error'));
+				this.saveFailed(e);
 			}
 		},
 		onclickDuplicate: async function(id) {
@@ -595,6 +599,31 @@ var FM = Vue.createApp({
 			}
 		},
 
+		// ---- sync between several open simulator pages ----
+		// whichever page saved last wins: the others reload the file list and, for a file they have open without
+		// unsaved changes, the file itself
+		broadcast: function(msg) { try { if (this._bc) this._bc.postMessage(msg); } catch(e) {} },
+		onRemoteChange: async function(msg) {
+			try {
+				this.nodes = await FM_DB.getAllNodes();
+				this.tabs = this.tabs.filter(t => this.nodeById(t.id));
+				if (this.activeId && !this.nodeById(this.activeId)) this.activeId = null;
+				if (this.selectedId && !this.nodeById(this.selectedId)) this.selectedId = null;
+				if (msg && msg.kind == 'data' && msg.id == this.activeId && UI_MAIN.canSim) {
+					this.refreshDirty();
+					let tab = this.tabs.find(t => t.id == this.activeId);
+					if (tab && !tab.dirty) {
+						let data = await FM_DB.getData(this.activeId);
+						if (data && UI_MAIN.loadFileData(data)) {
+							tab.baseline = '';
+							setTimeout(() => { tab.baseline = UI_MAIN.fileStateStr(); tab.dirty = false; },500);
+							this.showToast(this.t('fm_reloaded'));
+						}
+					}
+				}
+			} catch(e) { console.error(e); }
+		},
+		
 		// ---- startup ----
 		init: async function() {
 			this.persistent = await FM_DB.open();
@@ -617,6 +646,11 @@ var FM = Vue.createApp({
 					this.refreshDirty();
 				},300);
 			}
+			try {
+				this._bc = new BroadcastChannel('kcsim_files');
+				this._bc.onmessage = (ev) => this.onRemoteChange(ev.data);
+				FM_DB.onWrite = (msg) => this.broadcast(msg);
+			} catch(e) {}
 			this.applyLayout();
 			this.ready = true;
 			setInterval(() => this.refreshDirty(),1500);

@@ -60,6 +60,12 @@
 				<input type="button" value="&#9654;" @click="onclickNavSim"/>
 				<span>&nbsp;{{$t('simulate_n_times',[numSim])}}</span>
 			</div>
+			<div id="divNavTools">
+				<label><input type="radio" value="en" v-model="$i18n.locale" @change="onchangeLang"/>EN</label> <label><input type="radio" value="ja" v-model="$i18n.locale" @change="onchangeLang"/>JP</label>
+				<input type="button" value="&#8630;" :title="$t('undo')" :disabled="!canUndo" @click="onclickUndo"/><input type="button" value="&#8631;" :title="$t('redo')" :disabled="!canRedo" @click="onclickRedo"/>
+				<input type="button" :value="$t('nav_backup_share')" :title="$t('save_load_simulator_backup')" @click="onclickBackup"/>
+				<input type="button" :value="$t('nav_deckbuilder')" :title="$t('import_export_deckbuilder_format')" @click="onclickDeckbuilder"/>
+			</div>
 		</div>
 		<div id="divSimSlots">
 			<div class="simSlotHeader" :title="$t('sim_slots_tooltip')">{{$t('sim_slots')}}</div>
@@ -82,15 +88,6 @@
 		<hr>
 		
 		<div id="divPlayer">
-			<div class="fleetSection">
-				<label><input type="radio" value="en" v-model="$i18n.locale" @change="onchangeLang"/>EN</label> <label><input type="radio" value="ja" v-model="$i18n.locale" @change="onchangeLang"/>JP</label>
-				&nbsp;&nbsp;&nbsp;&nbsp;
-				<input type="button" :value="$t('save_load_simulator_backup')" @click="onclickBackup"/>&nbsp;
-				<input type="button" :value="$t('import_export_deckbuilder_format')" @click="onclickDeckbuilder"/>&nbsp;
-				&nbsp;&nbsp;
-				<input type="button" value="&#8630;" :title="$t('undo')" :disabled="!canUndo" @click="onclickUndo"/>
-				<input type="button" value="&#8631;" :title="$t('redo')" :disabled="!canRedo" @click="onclickRedo"/>
-			</div>
 			<h2 class="toggleHeader" @click="toggleSection('player')">{{$t('fleets')}} <span class="toggleArrow">{{sectionsOpen.player ? '&#9660;' : '&#9654;'}}</span></h2>
 			<div v-show="sectionsOpen.player">
 			<div class="fleetSection">
@@ -2274,6 +2271,7 @@
 				</div>
 				<div class="fmTabHint" v-if="!tabs.length">{{t('fm_no_tabs')}}</div>
 			</div>
+			<button type="button" class="fmBtn fmPlus" :title="t('fm_new_file')" @click="onclickNewFile()">&#65291;</button>
 			<button type="button" class="fmBtn" :title="t('fm_save_tip')" @click="onclickSave">{{t('fm_save')}}</button>
 			<button type="button" class="fmBtn" @click="onclickSaveAs">{{t('fm_save_as')}}</button>
 		</div>

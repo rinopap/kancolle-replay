@@ -1336,7 +1336,7 @@ var UI_MAIN = Vue.createApp({
 			let toPlain = o => o ? JSON.parse(JSON.stringify(o)) : null;
 			return {
 				fileVersion: 1,
-				save: CONVERT.uiToSave(this),
+				save: toPlain(CONVERT.uiToSave(this)),
 				active: this.simSlotActive,
 				slots: this.simSlots.map(s => ({ save: toPlain(s.save), enemySync: s.enemySync, summary: toPlain(s.summary), results: toPlain(s.results) })),
 				stateStr: this.fileStateStr(),
@@ -3743,8 +3743,16 @@ var UI_OTHER = Vue.createApp({
 
 
 
+// several simulator pages can be open at once: the page that was operated last owns the saved working state
+var PAGE_ID = Math.random().toString(36).slice(2);
+function markPageActive() { try { localStorage.sim2_lastActive = PAGE_ID; } catch(e) {} }
+markPageActive();
+['pointerdown','keydown','wheel','focus'].forEach(ev => window.addEventListener(ev,markPageActive,true));
+document.addEventListener('visibilitychange',() => { if (!document.hidden) markPageActive(); });
+COMMON.global.isLastActivePage = function() { try { return !localStorage.sim2_lastActive || localStorage.sim2_lastActive == PAGE_ID; } catch(e) { return true; } };
+
 document.body.onbeforeunload = function() {
-	if (UI_MAIN.canSave) {
+	if (UI_MAIN.canSave && COMMON.global.isLastActivePage()) {
 		localStorage.sim2 = JSON.stringify(CONVERT.uiToSave(UI_MAIN));
 		localStorage.sim2_g = JSON.stringify(CONVERT.uiToSaveGlobal(UI_MAIN));
 		UI_MAIN._saveSlotsToStorage();
