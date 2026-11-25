@@ -1,5 +1,26 @@
 COMMON.promiseI18n.then(() => {
 
+var html2canvasPromise = null;
+function loadHtml2Canvas() {
+	if (typeof window.html2canvas === 'function') return Promise.resolve(window.html2canvas);
+	if (!html2canvasPromise) {
+		html2canvasPromise = new Promise((resolve, reject) => {
+			let script = document.createElement('script');
+			script.src = 'js/html2canvas-fix.min.js';
+			script.onload = () => {
+				if (typeof window.html2canvas === 'function') resolve(window.html2canvas);
+				else reject(new Error('html2canvas did not load'));
+			};
+			script.onerror = () => reject(new Error('Failed to load html2canvas'));
+			document.head.appendChild(script);
+		}).catch(error => {
+			html2canvasPromise = null;
+			throw error;
+		});
+	}
+	return html2canvasPromise;
+}
+
 var CONST = window.COMMON.getConst({
 	numBattlesMax: 9,
 	numCompMax: 12,
@@ -2083,10 +2104,16 @@ ${t('results.buckets')}:	${this.resultsBucketTPPer}`;
 		},
 		onclickScreenShot: async function(e) {
 			let includeFleet = !!e.altKey;
-		
-			this.$refs.divResults.style.backgroundColor = window.getComputedStyle(document.body).backgroundColor;
-			let canvas = await html2canvas(this.$refs.divResults);
-			this.$refs.divResults.style.backgroundColor = '';
+			let renderHtml = await loadHtml2Canvas();
+			let results = this.$refs.divResults;
+			let previousBackgroundColor = results.style.backgroundColor;
+			let canvas;
+			try {
+				results.style.backgroundColor = window.getComputedStyle(document.body).backgroundColor;
+				canvas = await renderHtml(results);
+			} finally {
+				results.style.backgroundColor = previousBackgroundColor;
+			}
 			
 			if (includeFleet) {
 				let canvasStats = canvas;
